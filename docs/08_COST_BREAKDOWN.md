@@ -1,12 +1,12 @@
 # 💰 Cost Breakdown
 
-> Budget estimates at every growth stage — designed for zero-cost launch for Hekaya Jewelry
+> Budget estimates at every growth stage — designed for zero-cost launch for Hekaya Jewellery
 
 ---
 
 ## 1. Philosophy: Start Free, Scale Smart
 
-Hekaya Jewelry is designed to launch at **$0/month** using free tiers of every service. You only start paying when your business grows enough to justify the cost. Every paid upgrade has a clear trigger point.
+Hekaya Jewellery is designed to launch at **$0/month** using free tiers of every service. You only start paying when your business grows enough to justify the cost. Every paid upgrade has a clear trigger point.
 
 ---
 
@@ -23,7 +23,7 @@ Hekaya Jewelry is designed to launch at **$0/month** using free tiers of every s
 | **GitHub** | Free | $0 | Unlimited private repos |
 | **Google Analytics** | Free | $0 | Traffic analytics |
 | **UptimeRobot** | Free | $0 | Uptime monitoring (50 monitors) |
-| **Domain** | `.com` | ~$1/month (~$12/year) | hekaya-jewelry.com |
+| **Domain** | `.com` | ~$1/month (~$12/year) | hekaya-Jewellery.com |
 
 ### Free Tier Limits
 | Service | Limit | What Happens at Limit |
@@ -124,7 +124,7 @@ Hekaya Jewelry is designed to launch at **$0/month** using free tiers of every s
 
 ---
 
-## 7. Cost Comparison: Hekaya Jewelry vs. Alternatives
+## 7. Cost Comparison: Hekaya Jewellery vs. Alternatives
 
 | Platform | Monthly Cost | Transaction Fee | Customizable? |
 |----------|-------------|----------------|---------------|
@@ -155,7 +155,7 @@ At an average order value of **150 AED** with **~40% margin**:
 - **$150/month costs** → ~10 orders/month to break even
 
 > [!NOTE]
-> Most children's jewelry businesses in the UAE sell 30-100 orders/month within the first year through Instagram marketing alone.
+> Most children's Jewellery businesses in the UAE sell 30-100 orders/month within the first year through Instagram marketing alone.
 
 ---
 

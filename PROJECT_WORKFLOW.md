@@ -1,20 +1,20 @@
-# Hekaya Jewelry — Complete Project Workflow
+# Hekaya Jewellery — Complete Project Workflow
 
 > **مجوهرات حكاية — "في كل قطعة… حكاية"**
-> A children's jewelry e-commerce platform with a unique QR Memory system.
+> A children's Jewellery e-commerce platform with a unique QR Memory system.
 > This document describes the full business flow, user experience, and system behavior.
 
 ---
 
-## 1. What is Hekaya Jewelry?
+## 1. What is Hekaya Jewellery?
 
-Hekaya Jewelry is a **bilingual (Arabic/English)** online jewelry store targeting the **UAE market**. The store primarily sells **children's jewelry** but also serves all age groups.
+Hekaya Jewellery is a **bilingual (Arabic/English)** online Jewellery store targeting the **UAE market**. The store primarily sells **children's Jewellery** but also serves all age groups.
 
-Every eligible jewelry piece comes with a **unique QR Memory code** — a physical card containing a QR code that unlocks a private digital memory page. Parents scan the QR, upload photos and a heartfelt message, and create a keepsake that lasts forever.
+Every eligible Jewellery piece comes with a **unique QR Memory code** — a physical card containing a QR code that unlocks a private digital memory page. Parents scan the QR, upload photos and a heartfelt message, and create a keepsake that lasts forever.
 
-**What makes this different from any other jewelry store:**
+**What makes this different from any other Jewellery store:**
 
-| Normal Jewelry Shop | Hekaya Jewelry |
+| Normal Jewellery Shop | Hekaya Jewellery |
 |---|---|
 | Customer buys → Customer forgets | Customer buys → Receives QR card |
 | No emotional connection | Scans QR → Uploads precious photos |
@@ -43,7 +43,7 @@ flowchart TD
     L -->|Yes| N["✅ Order confirmed!"]
     N --> O["📧 Confirmation email sent"]
     N --> P["🔲 QR code generated\n(if QR option selected)"]
-    P --> Q["📬 Jewelry + QR card\nshipped to customer"]
+    P --> Q["📬 Jewellery + QR card\nshipped to customer"]
     Q --> R["📱 Customer scans QR card"]
     R --> S["🔑 Enters 4-digit PIN"]
     S --> T["📸 Uploads 3 photos\n+ title + message"]
@@ -63,19 +63,19 @@ flowchart TD
 
 At checkout, the customer chooses whether to add a QR Memory to their order:
 - **Per order** — One QR code for the entire order
-- **Per piece** — A separate QR code for each jewelry piece
+- **Per piece** — A separate QR code for each Jewellery piece
 
 After payment is confirmed, the system:
 1. Generates a unique token (random 8-character code)
-2. Creates a QR code image pointing to `hekaya-jewelry.com/memory/[token]`
+2. Creates a QR code image pointing to `hekaya-Jewellery.com/memory/[token]`
 3. Stores the QR in the database as **inactive** (no memories yet)
-4. QR code is printed on a physical card and placed inside the jewelry packaging
+4. QR code is printed on a physical card and placed inside the Jewellery packaging
 
 ### 3.2 How QR Memories Work
 
 ```mermaid
 flowchart TD
-    A["📱 Customer scans QR code\non physical card"] --> B["🌐 Opens:\nhekaya-jewelry.com/memory/abc123"]
+    A["📱 Customer scans QR code\non physical card"] --> B["🌐 Opens:\nhekaya-Jewellery.com/memory/abc123"]
     B --> C{"Memory page\nhas content?"}
     
     C -->|"No (first time)"| D["🔐 Login required\nto set up memory"]
@@ -457,7 +457,7 @@ erDiagram
 | Supabase (Database) | $0 | $25/mo | Database + Auth |
 | Supabase Storage (Images) | $0 | Pay-per-use | Photo storage |
 | Tap Payments | ~2.75%/tx | ~2.75%/tx | Payment processing |
-| Domain | ~$12/year | ~$12/year | hekaya-jewelry.com |
+| Domain | ~$12/year | ~$12/year | hekaya-Jewellery.com |
 
 ### First Year Total: ~$12 (domain only) + payment processing fees
 
@@ -501,7 +501,7 @@ erDiagram
 ---
 
 <p align="center">
-  <strong>Hekaya Jewelry</strong> — مجوهرات حكاية<br>
+  <strong>Hekaya Jewellery</strong> — مجوهرات حكاية<br>
   "A Story in Every Piece" / "في كل قطعة… حكاية"<br><br>
   <em>Document prepared for project approval</em>
 </p>

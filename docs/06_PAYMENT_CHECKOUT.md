@@ -1,6 +1,6 @@
 # 💳 Payment & Checkout
 
-> How to accept payments securely for Hekaya Jewelry
+> How to accept payments securely for Hekaya Jewellery
 
 ---
 

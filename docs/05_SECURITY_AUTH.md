@@ -1,6 +1,6 @@
 # 🔐 Security & Authentication
 
-> How to keep Hekaya Jewelry secure — beginner-friendly with professional results
+> How to keep Hekaya Jewellery secure — beginner-friendly with professional results
 
 ---
 

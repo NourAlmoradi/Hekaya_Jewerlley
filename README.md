@@ -1,6 +1,6 @@
-# ✨ Hekaya Jewelry | مجوهرات حكاية
+# ✨ Hekaya Jewellery | مجوهرات حكاية
 
-> **Children's Jewelry with Dynamic QR Memory Codes**
+> **Children's Jewellery with Dynamic QR Memory Codes**
 > _"A Story in Every Piece" / "في كل قطعة… حكاية"_
 
 [![Next.js](https://img.shields.io/badge/Next.js-16.2.4-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
@@ -11,9 +11,9 @@
 
 ---
 
-## 🎯 What is Hekaya Jewelry?
+## 🎯 What is Hekaya Jewellery?
 
-Hekaya Jewelry is a **premium bilingual e-commerce store** specializing in children's jewelry for the UAE market. Each eligible jewelry piece comes with a **unique QR Memory code** that links to a private, PIN-protected digital memory page where parents can store up to 3 photos and a heartfelt message — creating a keepsake that lasts forever.
+Hekaya Jewellery is a **premium bilingual e-commerce store** specializing in children's Jewellery for the UAE market. Each eligible Jewellery piece comes with a **unique QR Memory code** that links to a private, PIN-protected digital memory page where parents can store up to 3 photos and a heartfelt message — creating a keepsake that lasts forever.
 
 ### ✨ Core Features
 
@@ -197,7 +197,7 @@ NEXT_PUBLIC_PAYPAL_CLIENT_ID=
 PAYPAL_CLIENT_SECRET=
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 NEXT_PUBLIC_WHATSAPP_NUMBER=+971XXXXXXXXX
-ADMIN_EMAIL=admin@hekayajewelry.com
+ADMIN_EMAIL=admin@hekayaJewellery.com
 ```
 
 ### 3. Run Development Server
@@ -270,6 +270,6 @@ This project is proprietary. All rights reserved.
 ---
 
 <p align="center">
-  Built with 💕 for Hekaya Jewelry<br>
-  <strong>hekaya-jewelry.com</strong>
+  Built with 💕 for Hekaya Jewellery<br>
+  <strong>hekaya-Jewellery.com</strong>
 </p>

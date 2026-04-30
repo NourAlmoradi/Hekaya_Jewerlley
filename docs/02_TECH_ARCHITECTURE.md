@@ -1,6 +1,6 @@
 # 🛠️ Tech Stack & Architecture
 
-> Technologies, database schema, API routes, and project structure for Hekaya Jewelry
+> Technologies, database schema, API routes, and project structure for Hekaya Jewellery
 
 ---
 
@@ -284,10 +284,10 @@ PAYPAL_CLIENT_SECRET=               # ⚠️ Server-only! No NEXT_PUBLIC_
 # Supabase Storage uses NEXT_PUBLIC_SUPABASE_URL
 
 # Site
-NEXT_PUBLIC_SITE_URL=https://hekaya-jewelry.com
-NEXT_PUBLIC_SITE_NAME=Hekaya Jewelry
+NEXT_PUBLIC_SITE_URL=https://hekaya-Jewellery.com
+NEXT_PUBLIC_SITE_NAME=Hekaya Jewellery
 NEXT_PUBLIC_WHATSAPP_NUMBER=+971XXXXXXXXX
-ADMIN_EMAIL=admin@hekaya-jewelry.com
+ADMIN_EMAIL=admin@hekaya-Jewellery.com
 ```
 
 ---

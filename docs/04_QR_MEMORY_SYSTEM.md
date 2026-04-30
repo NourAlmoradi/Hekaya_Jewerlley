@@ -6,16 +6,16 @@
 
 ## 1. Concept
 
-When a customer buys a kids' jewelry piece, they can choose to add a **unique QR code** at checkout (per order or per piece). Scanning this QR leads to a **PIN-protected memory page** where parents can:
+When a customer buys a kids' Jewellery piece, they can choose to add a **unique QR code** at checkout (per order or per piece). Scanning this QR leads to a **PIN-protected memory page** where parents can:
 - Upload up to **3 photos**
 - Write a **title and message**
 - Update it **anytime** as the child grows
 
 ### Why It's Powerful
-- **Emotional connection** — transforms jewelry into a keepsake
+- **Emotional connection** — transforms Jewellery into a keepsake
 - **Repeat engagement** — parents keep coming back
 - **Gift-worthy** — grandparents scan QR and see grandchild's memories
-- **Unique in market** — an innovative feature that sets Hekaya Jewelry apart
+- **Unique in market** — an innovative feature that sets Hekaya Jewellery apart
 
 ---
 
@@ -23,10 +23,10 @@ When a customer buys a kids' jewelry piece, they can choose to add a **unique QR
 
 ```
 ① BROWSE  → Customer sees "🎁 QR ذكريات" badge on eligible products
-② BUY     → Customer purchases jewelry + chooses QR option at checkout
+② BUY     → Customer purchases Jewellery + chooses QR option at checkout
            (per order = 1 QR, or per piece = 1 QR per item)
 ③ CONFIRM → System auto-generates unique QR code (shown on confirmation page)
-④ SCAN    → Parent scans QR → lands on hekaya-jewelry.com/memory/abc123
+④ SCAN    → Parent scans QR → lands on hekaya-Jewellery.com/memory/abc123
 ⑤ SETUP   → First time: login required, then upload 3 photos + title + message
 ⑥ PIN     → Parent sets a 4-digit PIN for viewers
 ⑦ SHARE   → Anyone who scans QR + enters PIN sees the memory page
@@ -41,7 +41,7 @@ When a customer buys a kids' jewelry piece, they can choose to add a **unique QR
 import QRCode from 'qrcode';
 
 async function generateQRCode(slug) {
-  const url = `https://hekaya-jewelry.com/memory/${slug}`;
+  const url = `https://hekaya-Jewellery.com/memory/${slug}`;
   const buffer = await QRCode.toBuffer(url, {
     width: 1000,
     color: { dark: '#C9A96E', light: '#FAFAF8' }, // Warm Gold on Warm White
@@ -55,7 +55,7 @@ async function generateQRCode(slug) {
 ```typescript
 import { customAlphabet } from 'nanoid';
 const generateSlug = customAlphabet('abcdefghijkmnpqrstuvwxyz23456789', 8);
-// Produces: "abc3def7" → hekaya-jewelry.com/memory/abc3def7
+// Produces: "abc3def7" → hekaya-Jewellery.com/memory/abc3def7
 ```
 
 ### Flow After Payment
@@ -71,11 +71,11 @@ const generateSlug = customAlphabet('abcdefghijkmnpqrstuvwxyz23456789', 8);
 
 ## 4. Public Memory Page Design
 
-**URL:** `hekaya-jewelry.com/memory/abc3def7`
+**URL:** `hekaya-Jewellery.com/memory/abc3def7`
 
 ```
 ┌──────────────────────────────────────┐
-│        Hekaya Jewelry                │
+│        Hekaya Jewellery                │
 │                                      │
 │     🔑 Enter 4-digit PIN            │
 │     [____]  [View Memory →]         │
@@ -90,7 +90,7 @@ const generateSlug = customAlphabet('abcdefghijkmnpqrstuvwxyz23456789', 8);
 │  │   1    │ │   2    │ │   3    │  │
 │  └────────┘ └────────┘ └────────┘  │
 │                                      │
-│      Hekaya Jewelry                 │
+│      Hekaya Jewellery                 │
 └──────────────────────────────────────┘
 ```
 
@@ -131,7 +131,7 @@ Upload to Supabase Storage → Save URL to memory_photos table
 | **On-screen** | Order confirmation page (immediate) |
 | **Email** | Automated within 1 minute |
 | **My Memories** | Always available in user account |
-| **Physical card** | Printed card in jewelry packaging |
+| **Physical card** | Printed card in Jewellery packaging |
 
 ---
 

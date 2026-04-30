@@ -1,15 +1,15 @@
-# 📖 Hekaya Jewelry: Comprehensive Project Overview
+# 📖 Hekaya Jewellery: Comprehensive Project Overview
 
-> **Brand Name:** Hekaya Jewelry / مجوهرات حكاية  
+> **Brand Name:** Hekaya Jewellery / مجوهرات حكاية  
 > **Tagline:** "A Story in Every Piece" / "في كل قطعة… حكاية"  
-> **Domain:** hekaya-jewelry.com  
+> **Domain:** hekaya-Jewellery.com  
 
 ---
 
 ## 1. Executive Summary (The Core Idea)
-**Hekaya Jewelry** is a premium, bilingual (Arabic & English) e-commerce platform specializing in **children's fine jewelry**. 
+**Hekaya Jewellery** is a premium, bilingual (Arabic & English) e-commerce platform specializing in **children's fine Jewellery**. 
 
-While traditional jewelry is valued purely for its material, Hekaya introduces a profound emotional layer: **The Dynamic QR Memory System**. Every piece of kids' jewelry sold comes with a unique, dynamic QR code. When scanned, this code unlocks a private, parent-managed digital memory page dedicated to the child wearing the piece. 
+While traditional Jewellery is valued purely for its material, Hekaya introduces a profound emotional layer: **The Dynamic QR Memory System**. Every piece of kids' Jewellery sold comes with a unique, dynamic QR code. When scanned, this code unlocks a private, parent-managed digital memory page dedicated to the child wearing the piece. 
 
 Hekaya transforms a simple piece of gold into a living, digital heirloom that captures a child's precious photos and heartfelt messages.
 
@@ -18,20 +18,20 @@ Hekaya transforms a simple piece of gold into a living, digital heirloom that ca
 ## 2. The Problem & The Solution
 
 ### The Market Problem
-When parents or grandparents buy jewelry for children, the pieces are often outgrown, stored away, or passed down with the memories surrounding them forgotten. A gold bracelet bought for a 1st birthday is just a bracelet ten years later; the emotional context of *when* and *why* it was given is lost to time.
+When parents or grandparents buy Jewellery for children, the pieces are often outgrown, stored away, or passed down with the memories surrounding them forgotten. A gold bracelet bought for a 1st birthday is just a bracelet ten years later; the emotional context of *when* and *why* it was given is lost to time.
 
 ### The Hekaya Solution
-We digitize the emotional value of the jewelry. By tying a physical, high-quality piece of jewelry to a secure digital memory timeline, we ensure that the story outlives the moment. The jewelry becomes a physical key to a digital vault of childhood memories.
+We digitize the emotional value of the Jewellery. By tying a physical, high-quality piece of Jewellery to a secure digital memory timeline, we ensure that the story outlives the moment. The Jewellery becomes a physical key to a digital vault of childhood memories.
 
 ---
 
 ## 3. The Star Feature: Dynamic QR Memory System
-This is the original, innovative idea that sets Hekaya apart from any other jewelry brand in the market.
+This is the original, innovative idea that sets Hekaya apart from any other Jewellery brand in the market.
 
 **How it works (The User Journey):**
-1. **The Purchase:** A customer (parent, grandparent, friend) buys a piece of kids' jewelry from the website.
+1. **The Purchase:** A customer (parent, grandparent, friend) buys a piece of kids' Jewellery from the website.
 2. **The Generation:** The system automatically generates a unique, beautiful Warm Gold QR code tied specifically to that order.
-3. **The Setup:** The parent receives the jewelry, scans the QR code with their phone, and is guided to upload up to 3 photos and write a heartfelt title and message.
+3. **The Setup:** The parent receives the Jewellery, scans the QR code with their phone, and is guided to upload up to 3 photos and write a heartfelt title and message.
 4. **The Memory:** The parent creates a beautiful, PIN-protected memory page that anyone with the 4-digit PIN can view by scanning the QR code.
 5. **The Heirloom:** The memory page is editable anytime — the parent can update photos and messages as the child grows.
 
@@ -88,7 +88,7 @@ The website is designed to be highly intuitive, avoiding the complexity of massi
 ## 8. Business Roadmap & Growth
 
 **Phase 1: Launch (Weeks 1-8)**
-Focus on building the core platform, the AR/EN bilingual system, the QR generation logic, and securing UAE payment gateways. Launch with a curated collection of kids' jewelry.
+Focus on building the core platform, the AR/EN bilingual system, the QR generation logic, and securing UAE payment gateways. Launch with a curated collection of kids' Jewellery.
 
 **Phase 2: Marketing & Optimization (Months 2-4)**
 Leverage the uniqueness of the QR system in Instagram/TikTok marketing. Implement abandoned cart emails and gather customer reviews.
@@ -99,4 +99,4 @@ Introduce Buy-Now-Pay-Later (Tabby/Tamara) to increase conversion rates. Expand 
 ---
 
 ## 9. Summary Conclusion
-Hekaya Jewelry is not just an e-commerce store; it is a **memory-keeping platform disguised as a premium jewelry brand**. By combining physical craftsmanship with digital innovation, it offers a product that increases in emotional value over time, ensuring high customer loyalty, strong word-of-mouth marketing, and a completely unique position in the GCC jewelry market.
+Hekaya Jewellery is not just an e-commerce store; it is a **memory-keeping platform disguised as a premium Jewellery brand**. By combining physical craftsmanship with digital innovation, it offers a product that increases in emotional value over time, ensuring high customer loyalty, strong word-of-mouth marketing, and a completely unique position in the GCC Jewellery market.

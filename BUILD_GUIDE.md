@@ -1,6 +1,6 @@
-# 💎 Hekaya Jewelry — Complete Build Guide (Start to Finish)
+# 💎 Hekaya Jewellery — Complete Build Guide (Start to Finish)
 
-> **The ultimate step-by-step guide to build, deploy, and launch Hekaya Jewelry for FREE (or near-zero cost)**
+> **The ultimate step-by-step guide to build, deploy, and launch Hekaya Jewellery for FREE (or near-zero cost)**
 >
 > This guide reflects the **actual project state** as of April 2026. Completed steps are marked ✅. Pending steps are marked ❌.
 
@@ -637,10 +637,10 @@ if (profile?.role !== "admin") redirect("/");
 
 ## ❌ Step 20: Buy & Connect Your Domain (~$12/year)
 
-1. Buy `hekaya-jewelry.com` via [Namecheap](https://namecheap.com) or directly through Vercel
-2. In Vercel → Project Settings → Domains → Add `hekaya-jewelry.com`
+1. Buy `hekaya-Jewellery.com` via [Namecheap](https://namecheap.com) or directly through Vercel
+2. In Vercel → Project Settings → Domains → Add `hekaya-Jewellery.com`
 3. Update DNS records as instructed by Vercel
-4. Update `NEXT_PUBLIC_SITE_URL` in Vercel env vars to `https://hekaya-jewelry.com`
+4. Update `NEXT_PUBLIC_SITE_URL` in Vercel env vars to `https://hekaya-Jewellery.com`
 
 ---
 
@@ -649,7 +649,7 @@ if (profile?.role !== "admin") redirect("/");
 1. Go to Stripe Dashboard → Activate account with UAE business documents
 2. Go to PayPal Dashboard → Get live Client ID and Secret
 3. Switch to **live keys** in Vercel environment variables for both Stripe and PayPal
-4. Configure webhook in Stripe Dashboard → `https://hekaya-jewelry.com/api/webhook`
+4. Configure webhook in Stripe Dashboard → `https://hekaya-Jewellery.com/api/webhook`
 5. Test with a real transaction
 
 ---
@@ -687,7 +687,7 @@ Monthly recurring: $0 until you hit massive scale.
 | Vercel Hobby                 | Free                          |
 | Supabase Free Tier           | Free                          |
 | GitHub                       | Free                          |
-| Domain (~hekaya-jewelry.com) | ~$12/year                     |
+| Domain (~hekaya-Jewellery.com) | ~$12/year                     |
 | Stripe (Apple Pay/Mastercard) | 2.9% + 1 AED per transaction  |
 | PayPal                       | ~3.9% + fixed per transaction |
 
@@ -707,5 +707,5 @@ Monthly recurring: $0 until you hit massive scale.
 
 ---
 
-Built with love for Hekaya Jewelry
-**hekaya-jewelry.com**
+Built with love for Hekaya Jewellery
+**hekaya-Jewellery.com**

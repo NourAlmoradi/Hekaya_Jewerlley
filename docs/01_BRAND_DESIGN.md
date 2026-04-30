@@ -1,6 +1,6 @@
 # 🎨 Brand & Design System
 
-> Hekaya Jewelry — A premium children's jewelry brand that captures memories for a lifetime
+> Hekaya Jewellery — A premium children's Jewellery brand that captures memories for a lifetime
 > **"A Story in Every Piece" / "في كل قطعة… حكاية"**
 
 ---
@@ -8,13 +8,13 @@
 ## 1. Brand Identity
 
 ### Brand Name
-- **Arabic:** مجوهرات حكاية (Hekaya Jewelry)
-- **English:** Hekaya Jewelry
+- **Arabic:** مجوهرات حكاية (Hekaya Jewellery)
+- **English:** Hekaya Jewellery
 - **Tagline Arabic:** في كل قطعة… حكاية
 - **Tagline English:** A Story in Every Piece
 
 ### The Hekaya Vision (الرؤية)
-**"To become the definitive destination for moments worth keeping forever — through jewelry that carries meaning across generations."**
+**"To become the definitive destination for moments worth keeping forever — through Jewellery that carries meaning across generations."**
 "أن تصبح “حكاية” المرجع الأول لكل لحظة تُراد أن تُحفظ للأبد — عبر قطعة تُلبس وتُورث."
 
 ### The Hekaya Mission (المهمة)
@@ -37,7 +37,7 @@
 
 ### Logo Requirements
 - **Style:** Minimalist, elegant, quiet luxury mark
-- **Text:** "Hekaya Jewelry" / "مجوهرات حكاية"
+- **Text:** "Hekaya Jewellery" / "مجوهرات حكاية"
 - **Colors:** Warm Gold (#C9A96E) and Charcoal Black (#1A1A1A)
 - **Vibe:** Heritage-inspired, clean, timeless.
 

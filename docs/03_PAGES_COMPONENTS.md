@@ -1,13 +1,13 @@
 # 📄 Pages & Components
 
-> Every page and reusable UI component mapped out for Hekaya Jewelry
+> Every page and reusable UI component mapped out for Hekaya Jewellery
 
 ---
 
 ## 1. Complete Page Map (Bilingual AR/EN)
 
 ```
-hekaya-jewelry.com/
+hekaya-Jewellery.com/
 ├── /[locale]/                  Homepage (e.g. /ar/ or /en/)
 ├── /[locale]/products          Shop All
 ├── /[locale]/category/[slug]   Category page
@@ -32,7 +32,7 @@ hekaya-jewelry.com/
 ├── /[locale]/returns           Return policy
 ├── /[locale]/terms             Terms & conditions
 ├── /[locale]/privacy           Privacy policy
-├── /[locale]/jewelry-care      Care instructions
+├── /[locale]/Jewellery-care      Care instructions
 ├── /admin                      Admin dashboard
 ├── /admin/products             Manage products
 └── /admin/orders               Manage orders
