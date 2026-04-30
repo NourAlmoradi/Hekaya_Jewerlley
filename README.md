@@ -218,19 +218,6 @@ git push origin main
 
 ---
 
-## ⚠️ Key Technical Notes
-
-1. **Run commands from `hekaya/` subfolder** — `package.json` is inside `hekaya/`, not the workspace root.
-2. **Tailwind v4 = CSS-only config** — No `tailwind.config.ts`. All tokens are in `@theme {}` block in `globals.css`.
-3. **Next.js 16 middleware** — The routing proxy is `src/proxy.ts` (not `middleware.ts`) with a named export `proxy`. This is required for Next.js 16 compatibility.
-4. **RTL support** — Arabic (`ar`) is the default locale. The `dir` attribute flips automatically in `[locale]/layout.tsx`.
-5. **No shadcn/ui** — Custom UI components were built from scratch (`src/components/ui/`) to match the Quiet Luxury aesthetic precisely.
-6. **z-index values are hardcoded** — Tailwind v4 does not support `z-[--css-var]` syntax. Use: Header `z-50`, Drawer panel `z-[41]`, Overlay `z-40`, Floats `z-30`.
-7. **Payments: Apple Pay, Mastercard, PayPal** — Handled securely via Stripe and PayPal integrations.
-8. **Image Storage: Supabase Storage** — Used for seamless integration with the database and auth ecosystem.
-
----
-
 ## 📖 Documentation
 
 All detailed documentation lives in the `docs/` folder:
@@ -249,17 +236,6 @@ All detailed documentation lives in the `docs/` folder:
 | [09_BUILD_ROADMAP.md](docs/09_BUILD_ROADMAP.md)         | 8-week step-by-step build plan               |
 | [PROJECT_WORKFLOW.md](PROJECT_WORKFLOW.md)               | Business flow doc (for co-founder approval)  |
 
----
-
-## 💰 Cost
-
-| Phase      | Monthly Cost   | Notes                           |
-| ---------- | -------------- | ------------------------------- |
-| **Launch** | $0/month       | Free tiers + domain (~$12/year) |
-| **Growth** | ~$45/month     | Vercel Pro + Supabase Pro       |
-| **Scale**  | ~$100–200/month | Additional services as needed   |
-
-_Plus transaction fees (Stripe/PayPal processing)_
 
 ---
 
