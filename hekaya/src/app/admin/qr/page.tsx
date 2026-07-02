@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Eye, KeyRound, QrCode, Search, Trash2 } from "lucide-react";
+import { Download, Eye, KeyRound, QrCode, Search, Trash2, X } from "lucide-react";
 import { useT } from "@/lib/useT";
 import { useOrders } from "@/lib/useOrders";
 import { useProducts } from "@/lib/useProducts";
@@ -14,6 +14,7 @@ import {
   saveMemory as dbSaveMemory,
   type PublicMemory,
 } from "@/lib/supabase/memories";
+import { generateQrDataUrl, memoryUrlFor } from "@/lib/qr";
 import {
   PlaceholderJewel,
   kindFromCategory,
@@ -41,6 +42,13 @@ export default function AdminQrPage() {
   const products = useProducts();
   const [memories, setMemories] = useState<Record<string, PublicMemory>>({});
   const [query, setQuery] = useState("");
+  // The QR image is generated on demand (not for every row) and shown in a
+  // modal with a download link. `memoryUrlFor` encodes the production URL.
+  const [qrModal, setQrModal] = useState<{
+    token: string;
+    url: string;
+    dataUrl: string;
+  } | null>(null);
 
   const reloadMemories = async () => {
     try {
@@ -94,6 +102,18 @@ export default function AdminQrPage() {
     }
   };
 
+  const handleShowQr = async (token: string) => {
+    try {
+      const url = memoryUrlFor(token);
+      const dataUrl = await generateQrDataUrl(url, 320);
+      setQrModal({ token, url, dataUrl });
+    } catch {
+      toast.error(
+        locale === "ar" ? "تعذّر إنشاء الرمز" : "Could not generate QR",
+      );
+    }
+  };
+
   const handleDelete = async (token: string) => {
     if (!memories[token]) {
       toast.info(t("admin_qr_no_memory"));
@@ -101,7 +121,7 @@ export default function AdminQrPage() {
     }
     if (!confirm(t("admin_qr_delete_confirm"))) return;
     try {
-      await adminDeleteMemory(createClient(), token);
+      await adminDeleteMemory(token);
       await reloadMemories();
       toast.success(locale === "ar" ? "تم الحذف" : "Deleted");
     } catch {
@@ -270,6 +290,14 @@ export default function AdminQrPage() {
                   </td>
                   <td className="px-4 py-4 text-end">
                     <div className="inline-flex items-center gap-1">
+                      <button
+                        onClick={() => void handleShowQr(r.token)}
+                        className="grid h-8 w-8 place-items-center rounded-md text-white/70 hover:bg-white/[0.06] hover:text-[#c9a96e]"
+                        aria-label={t("admin_qr_codes")}
+                        title={t("admin_qr_codes")}
+                      >
+                        <QrCode className="h-4 w-4" />
+                      </button>
                       <Link
                         href={`/memory/${r.token}`}
                         target="_blank"
@@ -353,6 +381,13 @@ export default function AdminQrPage() {
                   {formatDate(r.createdAt, locale)}
                 </div>
                 <div className="flex gap-1">
+                  <button
+                    onClick={() => void handleShowQr(r.token)}
+                    className="grid h-9 w-9 place-items-center rounded-md text-white/80 ring-1 ring-white/10 hover:bg-white/[0.06] hover:text-[#c9a96e]"
+                    aria-label={t("admin_qr_codes")}
+                  >
+                    <QrCode className="h-4 w-4" />
+                  </button>
                   <Link
                     href={`/memory/${r.token}`}
                     target="_blank"
@@ -386,6 +421,42 @@ export default function AdminQrPage() {
           )}
         </ul>
       </div>
+
+      {/* QR preview + download modal */}
+      {qrModal && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+          onClick={() => setQrModal(null)}
+        >
+          <div
+            className="relative w-full max-w-xs rounded-2xl bg-[#141414] p-6 text-center ring-1 ring-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setQrModal(null)}
+              className="absolute end-3 top-3 grid h-8 w-8 place-items-center rounded-md text-white/60 hover:bg-white/[0.06] hover:text-white"
+              aria-label={t("back")}
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="mx-auto inline-block rounded-lg bg-white p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URL generated client-side; next/image cannot optimize it */}
+              <img src={qrModal.dataUrl} alt="QR" className="h-52 w-52" />
+            </div>
+            <p className="mt-4 break-all font-mono text-[11px] text-[#c9a96e]/80">
+              {qrModal.url}
+            </p>
+            <a
+              href={qrModal.dataUrl}
+              download={`hekaya-qr-${qrModal.token}.png`}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#c9a96e] px-4 py-2.5 text-sm font-semibold text-[#1a1508] transition hover:bg-[#d8bd8a]"
+            >
+              <Download className="h-4 w-4" />
+              {locale === "ar" ? "تحميل PNG" : "Download PNG"}
+            </a>
+          </div>
+        </div>
+      )}
     </>
   );
 }

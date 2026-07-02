@@ -123,28 +123,38 @@ export default function MemoryPage({
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const content = await unlockMemory(createClient(), token, pinInput);
-      if (content) {
-        applyContent(content);
+      const res = await unlockMemory(createClient(), token, pinInput);
+      if (res.status === "ok") {
+        applyContent(res.memory);
         setUnlocked(true);
         setUnlockedPin(pinInput);
         toast.success(t("welcome_back"));
-      } else {
-        toast.error(t("wrong_pin"));
-      }
-    } catch (err) {
-      // unlock_memory throws "Wrong PIN", or "Too many wrong attempts…" once
-      // the server locks the memory for 15 minutes after 5 misses.
-      const msg = (err as Error)?.message ?? "";
-      if (/wrong pin/i.test(msg)) {
-        toast.error(t("wrong_pin"));
-      } else {
+      } else if (res.status === "locked") {
+        // The memory is locked for `minutesLeft` more minutes — the correct PIN
+        // won't work until it expires, so say how long rather than "wrong PIN".
         toast.error(
           locale === "ar"
-            ? "محاولات خاطئة كثيرة — حاول مجددًا بعد قليل"
-            : "Too many wrong attempts — try again later",
+            ? `محاولات كثيرة — حاول بعد ${res.minutesLeft} دقيقة`
+            : `Too many attempts — try again in ${res.minutesLeft} min`,
+        );
+      } else {
+        // Wrong PIN, with the tries remaining before a lockout (when known).
+        toast.error(
+          res.attemptsLeft == null
+            ? t("wrong_pin")
+            : locale === "ar"
+              ? `رمز غير صحيح — بقيت ${res.attemptsLeft} محاولة`
+              : `Wrong PIN — ${res.attemptsLeft} attempt${res.attemptsLeft === 1 ? "" : "s"} left`,
         );
       }
+    } catch {
+      // A wrong/locked PIN resolves (never throws) — reaching here means the
+      // request itself failed. Never mislabel that as a lockout.
+      toast.error(
+        locale === "ar"
+          ? "تعذّر الاتصال — حاول مرة أخرى"
+          : "Connection problem — please try again",
+      );
     }
   };
 
@@ -221,9 +231,11 @@ export default function MemoryPage({
         photos,
       });
       // Re-read the saved content: owner/admin via RLS, otherwise via the PIN.
-      const fresh =
-        (await fetchMemoryByToken(supabase, token)) ??
-        (await unlockMemory(supabase, token, pinToUse));
+      let fresh = await fetchMemoryByToken(supabase, token);
+      if (!fresh) {
+        const res = await unlockMemory(supabase, token, pinToUse);
+        if (res.status === "ok") fresh = res.memory;
+      }
       if (fresh) {
         applyContent(fresh);
         setMeta({

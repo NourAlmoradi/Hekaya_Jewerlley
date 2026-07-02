@@ -165,23 +165,95 @@ language sql security definer stable as $$
 $$;
 
 -- Public QR card: return the FULL memory (title/message/photos) only after the
--- PIN checks out. verify_memory_pin() enforces the 5-try / 15-min lockout and
--- counts the failed attempt, so this is the single PIN-gated read path.
+-- PIN checks out. This is the single PIN-gated read path; it enforces the
+-- 5-try / 15-min lockout itself.
+--
+-- It RETURNS a status row instead of raising on a wrong/locked PIN. That is
+-- deliberate: PostgREST wraps each RPC in one transaction, so a RAISE would
+-- roll the whole call back — including the failed-attempt UPDATE we just made,
+-- meaning the counter could never accumulate and the lockout would never fire.
+-- Returning a row commits the counter and hands the client structured feedback
+--   status = 'ok'     → content columns are populated
+--   status = 'wrong'  → attempts_left = tries remaining before lockout
+--   status = 'locked' → minutes_left  = minutes until the lock expires
+-- The DROP is required because the OUT-column set changed (added status cols).
+drop function if exists public.unlock_memory(text, text);
 create or replace function public.unlock_memory(p_token text, p_pin text)
 returns table (
+  status text, attempts_left int, minutes_left int,
   token text, order_id text, product_id uuid, product_label text,
   title text, message text, photos text[],
   created_at timestamptz, updated_at timestamptz
 )
 language plpgsql security definer as $$
+declare
+  v_locked timestamptz;
+  v_attempts int;
+  v_ok boolean;
+  v_new int;
 begin
-  if not public.verify_memory_pin(p_token, p_pin) then
-    raise exception 'Wrong PIN';
+  select pin_locked_until, failed_pin_attempts
+    into v_locked, v_attempts
+  from public.memories where token = p_token;
+
+  -- Unknown token: report as a wrong PIN (get_memory already governs existence).
+  if not found then
+    return query select 'wrong'::text, 0, 0,
+      null::text, null::text, null::uuid, null::text,
+      null::text, null::text, null::text[],
+      null::timestamptz, null::timestamptz;
+    return;
   end if;
-  return query
-    select m.token, m.order_id, m.product_id, m.product_label,
-           m.title, m.message, m.photos, m.created_at, m.updated_at
-    from public.memories m where m.token = p_token;
+
+  -- Still inside the lock window: reject without touching the hash.
+  if v_locked is not null and v_locked > now() then
+    return query select 'locked'::text, 0,
+      greatest(1, ceil(extract(epoch from (v_locked - now())) / 60))::int,
+      null::text, null::text, null::uuid, null::text,
+      null::text, null::text, null::text[],
+      null::timestamptz, null::timestamptz;
+    return;
+  end if;
+
+  -- Lock window has passed: clear the stale counter for a fresh set of tries.
+  if v_locked is not null then
+    update public.memories
+      set failed_pin_attempts = 0, pin_locked_until = null
+      where token = p_token;
+    v_attempts := 0;
+  end if;
+
+  select pin_hash = crypt(p_pin, pin_hash) into v_ok
+  from public.memories where token = p_token;
+
+  if v_ok then
+    update public.memories
+      set failed_pin_attempts = 0, pin_locked_until = null
+      where token = p_token;
+    return query
+      select 'ok'::text, 0, 0,
+             m.token, m.order_id, m.product_id, m.product_label,
+             m.title, m.message, m.photos, m.created_at, m.updated_at
+      from public.memories m where m.token = p_token;
+  else
+    v_new := v_attempts + 1;
+    update public.memories
+      set failed_pin_attempts = v_new,
+          pin_locked_until = case when v_new >= 5
+                                  then now() + interval '15 minutes' end
+      where token = p_token;
+    if v_new >= 5 then
+      return query select 'locked'::text, 0, 15,
+        null::text, null::text, null::uuid, null::text,
+        null::text, null::text, null::text[],
+        null::timestamptz, null::timestamptz;
+    else
+      return query select 'wrong'::text, (5 - v_new), 0,
+        null::text, null::text, null::uuid, null::text,
+        null::text, null::text, null::text[],
+        null::timestamptz, null::timestamptz;
+    end if;
+  end if;
 end $$;
 
 -- Brute-force protection: a 4-digit PIN only has 10,000 combinations, so
@@ -455,6 +527,26 @@ begin
 
   return p_id;
 end $$;
+
+-- ---------------------------------------------------------------------
+-- 1c. POLICY HARDENING — close a direct-insert bypass + drop dead policies
+--
+--  * orders / order_items: an earlier schema script granted clients a direct
+--    INSERT policy (WITH CHECK auth.uid() = user_id). That let a signed-in
+--    client insert an order row with an arbitrary total/status, sidestepping
+--    place_order()'s price validation. place_order() is SECURITY DEFINER and
+--    bypasses RLS, so checkout keeps working without these policies.
+--  * memory-photos owner policies keyed on split_part(name,'/',1) = orders.id,
+--    but files live under "<token>/<uuid>", so the first segment is the TOKEN,
+--    never an order id — the policies could never match. Uploads/deletes use the
+--    service role and reads use the public URL, so dropping them changes nothing
+--    at runtime. The correct "admins delete memory photos" policy is kept.
+-- ---------------------------------------------------------------------
+drop policy if exists "users insert own orders"     on public.orders;
+drop policy if exists "insert items for own orders"  on public.order_items;
+drop policy if exists "owner reads memory photos"    on storage.objects;
+drop policy if exists "owner uploads memory photos"  on storage.objects;
+drop policy if exists "owner deletes memory photos"  on storage.objects;
 
 -- ---------------------------------------------------------------------
 -- 2. SEED — CATEGORIES (string ids preserved)

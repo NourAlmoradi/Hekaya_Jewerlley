@@ -19,6 +19,14 @@ export async function generateQrDataUrl(
 }
 
 export function memoryUrlFor(token: string): string {
-  if (typeof window === "undefined") return `/memory/${token}`;
-  return `${window.location.origin}/memory/${token}`;
+  // Prefer the configured public site URL so QR images encode the real domain
+  // even when generated on localhost or a preview deploy (a QR that points at
+  // http://localhost:3000 is useless once printed on a card). Fall back to the
+  // current origin, then to a relative path during SSR.
+  const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
+  if (site) return `${site}/memory/${token}`;
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/memory/${token}`;
+  }
+  return `/memory/${token}`;
 }

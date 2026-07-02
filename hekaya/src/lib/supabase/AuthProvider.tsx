@@ -50,33 +50,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, full_name, phone, is_admin")
-      .eq("id", u.id)
-      .maybeSingle();
+    // Keep the user signed in even if the profile read fails/hangs — never let
+    // a stalled query leave the whole app stuck on `loading`.
     setUser(u);
-    setProfile(
-      data
-        ? {
-            id: data.id,
-            fullName: data.full_name,
-            phone: data.phone,
-            isAdmin: data.is_admin,
-          }
-        : null,
-    );
-    setLoading(false);
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, phone, is_admin")
+        .eq("id", u.id)
+        .maybeSingle();
+      setProfile(
+        data
+          ? {
+              id: data.id,
+              fullName: data.full_name,
+              phone: data.phone,
+              isAdmin: data.is_admin,
+            }
+          : null,
+      );
+    } catch {
+      setProfile(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     const supabase = createClient();
     let active = true;
 
-    supabase.auth.getUser().then(({ data }) => {
-      if (active) void loadProfile(data.user);
-    });
+    // Watchdog: the whole tab shares ONE Supabase auth lock. If a token refresh
+    // wedges it, getUser()/the profiles query can hang and `loading` would stay
+    // true forever — every gate that waits on it (the account and admin pages)
+    // then spins with no escape. Force `loading` off after 8s so those pages
+    // fall back to their signed-out view instead of an infinite spinner; if
+    // auth resolves later, onAuthStateChange still updates the state normally.
+    const watchdog = setTimeout(() => {
+      if (active) setLoading(false);
+    }, 8000);
+
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (active) void loadProfile(data.user);
+      })
+      .catch(() => {
+        if (active) setLoading(false);
+      });
 
     // onAuthStateChange fires while Supabase holds its auth lock. loadProfile
     // queries the `profiles` table, which needs that same lock — calling it
@@ -91,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       active = false;
+      clearTimeout(watchdog);
       sub.subscription.unsubscribe();
     };
   }, [loadProfile]);

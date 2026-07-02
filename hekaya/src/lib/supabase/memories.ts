@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { deleteImagesByUrl } from "@/lib/supabase/storage";
 
 /** A memory with its private content — never includes the PIN hash. */
 export type PublicMemory = {
@@ -73,21 +72,60 @@ export async function getMemoryMeta(
 }
 
 /**
- * Unlock the private content with a PIN (the only PIN-gated read). Throws
- * "Wrong PIN" on a bad PIN and "Too many wrong attempts…" once locked.
+ * The outcome of a PIN unlock attempt. `unlock_memory` returns this as data
+ * (never throws for a wrong/locked PIN) so the failed-attempt counter it writes
+ * actually commits — a raised exception would roll the whole RPC transaction
+ * back. Genuine transport/unexpected errors still reject, so the caller can
+ * tell "wrong PIN" apart from "the request failed".
+ */
+export type UnlockResult =
+  | { status: "ok"; memory: PublicMemory }
+  | { status: "wrong"; attemptsLeft: number | null }
+  | { status: "locked"; minutesLeft: number };
+
+type UnlockRow = ContentRow & {
+  status?: string;
+  attempts_left?: number | null;
+  minutes_left?: number | null;
+};
+
+/**
+ * Unlock the private content with a PIN (the only PIN-gated read). Resolves to
+ * an {@link UnlockResult}; rejects only on a real network/unexpected error.
+ * Tolerates an older deployment whose `unlock_memory` still RAISES text errors.
  */
 export async function unlockMemory(
   supabase: SupabaseClient,
   token: string,
   pin: string,
-): Promise<PublicMemory | null> {
+): Promise<UnlockResult> {
   const { data, error } = await supabase.rpc("unlock_memory", {
     p_token: token,
     p_pin: pin,
   });
-  if (error) throw error;
-  const row = (Array.isArray(data) ? data[0] : data) as ContentRow | undefined;
-  return row ? mapContent(row) : null;
+  if (error) {
+    // Legacy function: it raises instead of returning a status row.
+    const msg = error.message ?? "";
+    if (/PIN_LOCKED|too many/i.test(msg)) {
+      const m = /PIN_LOCKED:(\d+)/.exec(msg)?.[1];
+      return { status: "locked", minutesLeft: m ? Number(m) : 15 };
+    }
+    if (/PIN_WRONG|wrong pin/i.test(msg)) {
+      const n = /PIN_WRONG:(\d+)/.exec(msg)?.[1];
+      return { status: "wrong", attemptsLeft: n ? Number(n) : null };
+    }
+    throw error; // genuine transport / unexpected failure
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as UnlockRow | undefined;
+  if (!row) return { status: "wrong", attemptsLeft: null };
+  if (row.status === "locked") {
+    return { status: "locked", minutesLeft: row.minutes_left ?? 15 };
+  }
+  if (row.status === "wrong") {
+    return { status: "wrong", attemptsLeft: row.attempts_left ?? null };
+  }
+  // status 'ok', or a legacy row that returned content with no status column.
+  return { status: "ok", memory: mapContent(row) };
 }
 
 /**
@@ -170,18 +208,23 @@ export async function adminResetMemoryPin(
   if (error) throw error;
 }
 
-/** Admin-only: delete a memory by token (and its photos from the bucket). */
-export async function adminDeleteMemory(
-  supabase: SupabaseClient,
-  token: string,
-): Promise<void> {
-  // Read the photos first so we can clean the bucket after the row is gone.
-  const existing = await fetchMemoryByToken(supabase, token).catch(() => null);
-  const { error } = await supabase
-    .from("memories")
-    .delete()
-    .eq("token", token);
-  if (error) throw error;
-  if (existing?.photos?.length)
-    void deleteImagesByUrl(supabase, existing.photos).catch(() => {});
+/**
+ * Admin-only: fully delete a memory — the DB row plus every uploaded photo
+ * (saved and orphaned) under `memory-photos/<token>/`. This goes through a
+ * server route because the `memory-photos` bucket has no client delete policy,
+ * so deleting the files has to run with the service role. Throws on failure so
+ * the caller can surface an error instead of silently leaving photos behind.
+ */
+export async function adminDeleteMemory(token: string): Promise<void> {
+  const res = await fetch("/api/admin/memory/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    const { error } = (await res.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(error || "Failed to delete memory");
+  }
 }

@@ -1,7 +1,27 @@
 import type { Order, Locale } from "@/types";
 import { formatPrice } from "@/lib/utils";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+/**
+ * Base URL for every link in an email (order + memory cards). In production
+ * this MUST come from env — a silent localhost fallback would email dead links
+ * to customers. We accept NEXT_PUBLIC_SITE_URL, then Vercel's own URL, and only
+ * fall back to localhost in dev. In production with neither set we log loudly.
+ */
+function resolveSite(): string {
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
+  if (explicit) return explicit;
+  const vercel = process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel}`;
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      "[email] NEXT_PUBLIC_SITE_URL is not set — email links will be broken.",
+    );
+    return "";
+  }
+  return "http://localhost:3000";
+}
+
+const SITE = resolveSite();
 
 /* Brand palette (kept in sync with globals.css @theme) */
 const GOLD = "#c9a96e";
