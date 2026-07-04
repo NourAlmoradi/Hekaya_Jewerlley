@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:mashaerjewellery.com)",
+      "WebFetch(domain:www.google.com)",
+      "Bash(curl -sI https://mashaerjewellery.com)",
+      "Bash(curl -sI https://www.mashaerjewellery.com)"
+    ]
+  }
+}

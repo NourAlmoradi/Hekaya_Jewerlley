@@ -70,11 +70,20 @@ export const metadata: Metadata = {
     siteName: "Mashaer Jewellery",
     locale: "ar_AE",
     alternateLocale: "en_AE",
+    images: [
+      {
+        url: "/logo.jpeg",
+        width: 1254,
+        height: 1254,
+        alt: "Mashaer Jewellery — مجوهرات مشاعر",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Mashaer Jewellery",
     description: "Some Feelings Deserve Eternity — بعض المشاعر تستحق الخلود",
+    images: ["/logo.jpeg"],
   },
   robots: {
     index: true,
@@ -92,6 +101,15 @@ const organizationJsonLd = {
   slogan: "Some Feelings Deserve Eternity",
   areaServed: "AE",
   email: "hello@mashaerjewellery.com",
+};
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Mashaer Jewellery",
+  alternateName: "مجوهرات مشاعر",
+  url: SITE_URL,
+  inLanguage: ["ar-AE", "en-AE"],
 };
 
 export default async function RootLayout({
@@ -115,7 +133,7 @@ export default async function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(organizationJsonLd),
+            __html: JSON.stringify([organizationJsonLd, websiteJsonLd]),
           }}
         />
         <Providers initialLocale={locale}>

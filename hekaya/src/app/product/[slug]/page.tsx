@@ -71,27 +71,55 @@ export default async function ProductPage({
   const product = await getProduct(slug);
 
   const jsonLd = product
-    ? {
-        "@context": "https://schema.org",
-        "@type": "Product",
-        name: product.name.en,
-        alternateName: product.name.ar,
-        description:
-          product.shortDescription?.en || product.description?.en || undefined,
-        image: product.images.filter(Boolean),
-        sku: product.id,
-        brand: { "@type": "Brand", name: "Mashaer Jewellery" },
-        offers: {
-          "@type": "Offer",
-          priceCurrency: "AED",
-          price: product.price,
-          availability:
-            (product.stock ?? 1) > 0
-              ? "https://schema.org/InStock"
-              : "https://schema.org/OutOfStock",
-          url: `${SITE_URL}/product/${product.slug}`,
+    ? [
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.name.en,
+          alternateName: product.name.ar,
+          description:
+            product.shortDescription?.en ||
+            product.description?.en ||
+            undefined,
+          image: product.images.filter(Boolean),
+          sku: product.id,
+          brand: { "@type": "Brand", name: "Mashaer Jewellery" },
+          offers: {
+            "@type": "Offer",
+            priceCurrency: "AED",
+            price: product.price,
+            availability:
+              (product.stock ?? 1) > 0
+                ? "https://schema.org/InStock"
+                : "https://schema.org/OutOfStock",
+            url: `${SITE_URL}/product/${product.slug}`,
+          },
         },
-      }
+        {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Home",
+              item: `${SITE_URL}/`,
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: "Shop All Jewellery",
+              item: `${SITE_URL}/products`,
+            },
+            {
+              "@type": "ListItem",
+              position: 3,
+              name: product.name.en,
+              item: `${SITE_URL}/product/${product.slug}`,
+            },
+          ],
+        },
+      ]
     : null;
 
   return (

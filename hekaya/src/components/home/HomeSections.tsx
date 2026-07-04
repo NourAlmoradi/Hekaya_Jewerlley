@@ -27,7 +27,7 @@ type HeroSlide = {
   secondaryCta: { href: string; labelAr: string; labelEn: string };
 };
 
-type HeroSlideExtra = HeroSlide & { image: string };
+type HeroSlideExtra = HeroSlide & { image: string; alt: string };
 
 const HERO_SLIDES: HeroSlideExtra[] = [
   {
@@ -36,6 +36,7 @@ const HERO_SLIDES: HeroSlideExtra[] = [
     titleBKey: "hero_slide1_title_b",
     subKey: "hero_slide1_sub",
     image: "/logo.jpg",
+    alt: "Mashaer Jewellery — premium children's gold jewellery in the UAE | مجوهرات مشاعر للأطفال",
     primaryCta: {
       href: "/products",
       labelAr: "ابدأ التسوق",
@@ -49,6 +50,7 @@ const HERO_SLIDES: HeroSlideExtra[] = [
     titleBKey: "hero_slide2_title_b",
     subKey: "hero_slide2_sub",
     image: "/page.png",
+    alt: "How the Mashaer QR Memory keepsake card works with children's jewellery | بطاقة ذكرى QR من مشاعر",
     primaryCta: { href: "/qr", labelAr: "كيف تعمل", labelEn: "How It Works" },
     secondaryCta: { href: "/products", labelAr: "تصفّحي", labelEn: "Browse" },
   },
@@ -58,6 +60,7 @@ const HERO_SLIDES: HeroSlideExtra[] = [
     titleBKey: "hero_slide3_title_b",
     subKey: "hero_slide3_sub",
     image: "/child.png",
+    alt: "Child wearing Mashaer fine children's jewellery | طفلة ترتدي مجوهرات مشاعر الفاخرة",
     primaryCta: { href: "/products", labelAr: "اكتشفي", labelEn: "Explore" },
     secondaryCta: { href: "/about", labelAr: "قصتنا", labelEn: "Our Story" },
   },
@@ -240,7 +243,7 @@ export function Hero() {
                 <img
                   key={s.image}
                   src={s.image}
-                  alt=""
+                  alt={s.alt}
                   loading={i === 0 ? "eager" : "lazy"}
                   fetchPriority={i === 0 ? "high" : "auto"}
                   decoding="async"
