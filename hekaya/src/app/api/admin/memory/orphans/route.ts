@@ -81,6 +81,8 @@ export async function POST() {
       return NextResponse.json({ error: listErr.message }, { status: 500 });
     }
     for (const f of files ?? []) {
+      // Only real files are deletable — a null id marks a folder placeholder.
+      if (!f.id) continue;
       scanned++;
       const path = `${token}/${f.name}`;
       if (referenced.has(path)) continue;
