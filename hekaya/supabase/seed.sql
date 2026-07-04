@@ -548,6 +548,16 @@ drop policy if exists "owner reads memory photos"    on storage.objects;
 drop policy if exists "owner uploads memory photos"  on storage.objects;
 drop policy if exists "owner deletes memory photos"  on storage.objects;
 
+-- Memory photos are served by their public URL (getPublicUrl in the upload
+-- route), which only resolves when the bucket itself is public. Codify that here
+-- so a fresh or redeployed environment doesn't need a manual dashboard toggle to
+-- make uploaded photos viewable — otherwise every memory image 404/403s until
+-- someone flips the bucket by hand. The unguessable "<token>/<uuid>.jpg" path is
+-- the only capability to a photo, so a public bucket exposes nothing browsable.
+insert into storage.buckets (id, name, public)
+  values ('memory-photos', 'memory-photos', true)
+  on conflict (id) do update set public = true;
+
 -- ---------------------------------------------------------------------
 -- 2. SEED — CATEGORIES (string ids preserved)
 -- ---------------------------------------------------------------------

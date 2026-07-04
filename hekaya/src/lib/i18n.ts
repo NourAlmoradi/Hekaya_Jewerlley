@@ -609,6 +609,18 @@ export const translations = {
     en: "Delete this memory permanently?",
   },
   admin_qr_no_memory: { ar: "لم تُنشأ بعد", en: "Not set up yet" },
+  admin_qr_clean_orphans: {
+    ar: "تنظيف الصور اليتيمة",
+    en: "Clean orphan photos",
+  },
+  admin_qr_clean_orphans_confirm: {
+    ar: "حذف كل صورة غير مرتبطة بأي ذكرى محفوظة؟ لا يمكن التراجع.",
+    en: "Delete every photo not linked to a saved memory? This can't be undone.",
+  },
+  admin_qr_clean_orphans_none: {
+    ar: "لا توجد صور يتيمة",
+    en: "No orphan photos found",
+  },
 
   // Footer WhatsApp
   footer_whatsapp_label: { ar: "واتساب", en: "WhatsApp" },

@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, Eye, KeyRound, QrCode, Search, Trash2, X } from "lucide-react";
+import {
+  Download,
+  Eye,
+  KeyRound,
+  QrCode,
+  Search,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useT } from "@/lib/useT";
 import { useOrders } from "@/lib/useOrders";
 import { useProducts } from "@/lib/useProducts";
@@ -11,6 +20,7 @@ import {
   fetchAllMemories,
   adminResetMemoryPin,
   adminDeleteMemory,
+  cleanOrphanMemoryPhotos,
   saveMemory as dbSaveMemory,
   type PublicMemory,
 } from "@/lib/supabase/memories";
@@ -114,6 +124,31 @@ export default function AdminQrPage() {
     }
   };
 
+  const [cleaning, setCleaning] = useState(false);
+
+  const handleCleanOrphans = async () => {
+    if (!confirm(t("admin_qr_clean_orphans_confirm"))) return;
+    setCleaning(true);
+    try {
+      const { removed } = await cleanOrphanMemoryPhotos();
+      // Reflect any freed counts (an edited memory's dropped file is gone now).
+      await reloadMemories();
+      if (removed > 0) {
+        toast.success(
+          locale === "ar"
+            ? `تم حذف ${removed} صورة يتيمة`
+            : `Removed ${removed} orphan photo${removed === 1 ? "" : "s"}`,
+        );
+      } else {
+        toast.info(t("admin_qr_clean_orphans_none"));
+      }
+    } catch {
+      toast.error(locale === "ar" ? "تعذّر التنظيف" : "Could not clean up");
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   const handleDelete = async (token: string) => {
     if (!memories[token]) {
       toast.info(t("admin_qr_no_memory"));
@@ -187,9 +222,24 @@ export default function AdminQrPage() {
             {totalGenerated} {t("admin_qr_pages_generated")}
           </p>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-md bg-[#1a1508] px-3 py-2 text-sm font-medium text-[#c9a96e] ring-1 ring-[#c9a96e]/20">
-          <QrCode className="h-4 w-4" />
-          {setUp} {t("admin_qr_active").toLowerCase()}
+        <div className="inline-flex items-center gap-2">
+          <button
+            onClick={() => void handleCleanOrphans()}
+            disabled={cleaning}
+            className="inline-flex items-center gap-2 rounded-md bg-white/5 px-3 py-2 text-sm font-medium text-white/70 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-[#c9a96e] disabled:cursor-wait disabled:opacity-60"
+            title={t("admin_qr_clean_orphans")}
+          >
+            {cleaning ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-[#c9a96e]" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            {t("admin_qr_clean_orphans")}
+          </button>
+          <div className="inline-flex items-center gap-2 rounded-md bg-[#1a1508] px-3 py-2 text-sm font-medium text-[#c9a96e] ring-1 ring-[#c9a96e]/20">
+            <QrCode className="h-4 w-4" />
+            {setUp} {t("admin_qr_active").toLowerCase()}
+          </div>
         </div>
       </div>
 

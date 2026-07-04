@@ -228,3 +228,23 @@ export async function adminDeleteMemory(token: string): Promise<void> {
     throw new Error(error || "Failed to delete memory");
   }
 }
+
+/**
+ * Admin-only: delete every photo in `memory-photos` that no saved memory still
+ * references — uploads that were never saved, and files stranded when a memory
+ * was edited to drop a photo. Returns how many files were scanned and removed.
+ * Goes through a server route because sweeping storage needs the service role.
+ */
+export async function cleanOrphanMemoryPhotos(): Promise<{
+  scanned: number;
+  removed: number;
+}> {
+  const res = await fetch("/api/admin/memory/orphans", { method: "POST" });
+  if (!res.ok) {
+    const { error } = (await res.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(error || "Failed to clean orphan photos");
+  }
+  return (await res.json()) as { scanned: number; removed: number };
+}
