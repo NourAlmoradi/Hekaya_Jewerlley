@@ -63,11 +63,11 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Mashaer Jewellery",
+    title: "مجوهرات مشاعر | Mashaer Jewellery",
     description: "Some Feelings Deserve Eternity — بعض المشاعر تستحق الخلود",
     type: "website",
     url: SITE_URL,
-    siteName: "Mashaer Jewellery",
+    siteName: "مجوهرات مشاعر",
     locale: "ar_AE",
     alternateLocale: "en_AE",
     images: [
@@ -106,8 +106,8 @@ const organizationJsonLd = {
 const websiteJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "Mashaer Jewellery",
-  alternateName: "مجوهرات مشاعر",
+  name: "مجوهرات مشاعر",
+  alternateName: "Mashaer Jewellery",
   url: SITE_URL,
   inLanguage: ["ar-AE", "en-AE"],
 };
