@@ -27,6 +27,29 @@ const supabaseHost = (() => {
   }
 })();
 
+// Content-Security-Policy. Shipped as Report-Only first: it never blocks, but
+// violations surface in the browser console so we can tune it before switching
+// to the enforcing `Content-Security-Policy` header. The app's real sources are
+// few: our own origin, Google sign-in, and the Supabase project (API + realtime
+// websocket + public storage images).
+const supabaseOrigin = supabaseHost ? `https://${supabaseHost}` : "";
+const supabaseWs = supabaseHost ? `wss://${supabaseHost}` : "";
+const csp = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline' https://accounts.google.com",
+  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob:${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  "font-src 'self' data:",
+  `connect-src 'self' https://accounts.google.com${
+    supabaseOrigin ? ` ${supabaseOrigin} ${supabaseWs}` : ""
+  }`,
+  "frame-src https://accounts.google.com",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join("; ");
+
 const nextConfig: NextConfig = {
   // Tell Next.js that THIS project folder is the workspace root,
   // silencing the "multiple lockfiles" warning.
@@ -43,7 +66,15 @@ const nextConfig: NextConfig = {
       }
     : undefined,
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          ...securityHeaders,
+          { key: "Content-Security-Policy-Report-Only", value: csp },
+        ],
+      },
+    ];
   },
 };
 

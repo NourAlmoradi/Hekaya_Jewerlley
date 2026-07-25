@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -43,7 +43,25 @@ const EMPTY_FORM: AddressInput = {
   postalCode: "",
 };
 
+// useSearchParams() must be inside a Suspense boundary. The root layout's
+// cookies() read currently forces dynamic rendering (so this doesn't fail
+// today), but wrapping it keeps the page correct if that ever changes — the
+// pattern /products and /policies already use.
 export default function AccountPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-[60vh] place-items-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent" />
+        </div>
+      }
+    >
+      <AccountPageInner />
+    </Suspense>
+  );
+}
+
+function AccountPageInner() {
   const { t, locale } = useT();
   const searchParams = useSearchParams();
   const { user, profile, loading, signOut } = useAuth();

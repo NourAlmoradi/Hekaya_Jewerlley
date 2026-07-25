@@ -47,8 +47,6 @@ type ProductRow = {
   variations: Product["variations"] | null;
   age_range: Bilingual | null;
   material: Bilingual | null;
-  available_sizes: Product["availableSizes"] | null;
-  available_ages: Product["availableAges"] | null;
   placeholder_tone: string | null;
   created_at: string;
 };
@@ -101,8 +99,6 @@ export function mapProduct(row: ProductRow): Product {
     variations: row.variations ?? undefined,
     ageRange: row.age_range ?? undefined,
     material: row.material ?? undefined,
-    availableSizes: row.available_sizes ?? undefined,
-    availableAges: row.available_ages ?? undefined,
     placeholderTone: row.placeholder_tone ?? undefined,
     createdAt: row.created_at,
   };
@@ -158,10 +154,42 @@ export async function fetchProductBySlug(
   return data ? mapProduct(data as ProductRow) : null;
 }
 
+/**
+ * Ensure a slug is unique in the `products` table, appending `-2`, `-3`, … on
+ * conflict. `excludeId` skips the row being updated so a product never collides
+ * with itself.
+ */
+async function uniqueProductSlug(
+  supabase: SupabaseClient,
+  base: string,
+  excludeId?: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from("products")
+    .select("id, slug")
+    .ilike("slug", `${base}%`);
+  const taken = new Set(
+    (data as { id: string; slug: string }[] | null)
+      ?.filter((r) => r.id !== excludeId)
+      .map((r) => r.slug) ?? [],
+  );
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
 /** Map an app Product into a writable database row (snake_case, no id/created_at). */
 function productToRow(p: Product) {
   return {
-    slug: p.slug,
+    // Derive a stable, URL-safe slug on save (mirrors collectionToRow). An
+    // existing real slug is preserved so URLs don't change on rename; the legacy
+    // `new-<timestamp>` placeholder and blank slugs get a name-based one.
+    slug:
+      (p.slug?.trim() && !p.slug.startsWith("new-") ? p.slug.trim() : "") ||
+      slugify(p.name.en) ||
+      slugify(p.name.ar) ||
+      `p-${generateToken(6)}`,
     name: p.name,
     short_description: p.shortDescription ?? null,
     description: p.description ?? null,
@@ -179,8 +207,6 @@ function productToRow(p: Product) {
     variations: p.variations ?? null,
     age_range: p.ageRange ?? null,
     material: p.material ?? null,
-    available_sizes: p.availableSizes ?? null,
-    available_ages: p.availableAges ?? null,
     placeholder_tone: p.placeholderTone ?? null,
   };
 }
@@ -190,7 +216,9 @@ export async function createProduct(
   supabase: SupabaseClient,
   product: Product,
 ): Promise<void> {
-  const { error } = await supabase.from("products").insert(productToRow(product));
+  const row = productToRow(product);
+  row.slug = await uniqueProductSlug(supabase, row.slug);
+  const { error } = await supabase.from("products").insert(row);
   if (error) throw error;
 }
 
@@ -199,9 +227,11 @@ export async function updateProduct(
   supabase: SupabaseClient,
   product: Product,
 ): Promise<void> {
+  const row = productToRow(product);
+  row.slug = await uniqueProductSlug(supabase, row.slug, product.id);
   const { error } = await supabase
     .from("products")
-    .update(productToRow(product))
+    .update(row)
     .eq("id", product.id);
   if (error) throw error;
 }

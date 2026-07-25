@@ -82,8 +82,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const collectionRoutes: MetadataRoute.Sitemap = collections
     .filter((c) => c.isActive)
+    // /products?collection=<id> is the real working filter (ProductsExplorer);
+    // /collections ignores query params, so don't emit dead-end URLs.
     .map((c) => ({
-      url: `${SITE_URL}/collections?collection=${c.id}`,
+      url: `${SITE_URL}/products?collection=${c.id}`,
       lastModified: now,
       changeFrequency: "weekly",
       priority: 0.6,

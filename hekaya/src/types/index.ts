@@ -16,7 +16,7 @@ export type Collection = {
   name: Bilingual;
   description: Bilingual;
   tone: string; // hex colour used as a fallback when no image is set
-  image?: string; // data URL or asset path
+  image?: string; // public Storage URL (legacy rows may still hold a base64 data URL)
   isActive: boolean;
   sortOrder: number;
   createdAt: string;
@@ -50,15 +50,11 @@ export type Product = {
   createdAt?: string;
   // Visual placeholder colour for shimmer cards (no real images yet)
   placeholderTone?: string;
-  // Suitable age range (shown as a chip on the product page)
+  // Suitable age group, admin-editable, shown as a chip on the product page
+  // ("مناسب للفئة العمرية"). The store is fixed-size, so there is no size picker.
   ageRange?: Bilingual;
   // Material label (shown as a chip on the product page); falls back to "18k Gold"
   material?: Bilingual;
-  // Sizes the admin has marked as available for this product (customer picks one).
-  // XS = newborn, S = 3–6, M = 7–9, L = 10–20, XL = above 20
-  availableSizes?: ("XS" | "S" | "M" | "L" | "XL")[];
-  // Suitable age groups the admin has marked as available (customer picks one)
-  availableAges?: ("newborn" | "kids" | "tweens" | "teens" | "adults")[];
 };
 
 export type CartItem = {

@@ -3,17 +3,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const PRODUCT_BUCKET = "product-images";
 
 /**
- * Upload one prepared product image (a Blob from `prepareImage`) to the public
+ * Upload one prepared image (a Blob from `prepareImage`) to the public
  * `product-images` bucket and return its permanent public URL. Admins are
  * allowed to write by the storage RLS policy. Keeping images in Storage — not
  * as base64 in Postgres — keeps catalog payloads small and CDN-cacheable.
+ * `prefix` scopes the object (e.g. "collections/") within the same bucket.
  */
-export async function uploadProductImage(
+async function uploadImage(
   supabase: SupabaseClient,
   blob: Blob,
+  prefix = "",
 ): Promise<string> {
   const ext = blob.type === "image/png" ? "png" : "jpg";
-  const path = `${crypto.randomUUID()}.${ext}`;
+  const path = `${prefix}${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage
     .from(PRODUCT_BUCKET)
     .upload(path, blob, {
@@ -23,6 +25,26 @@ export async function uploadProductImage(
     });
   if (error) throw error;
   return supabase.storage.from(PRODUCT_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/** Upload a prepared product image; returns its public URL. */
+export function uploadProductImage(
+  supabase: SupabaseClient,
+  blob: Blob,
+): Promise<string> {
+  return uploadImage(supabase, blob);
+}
+
+/**
+ * Upload a prepared collection image (under a `collections/` prefix in the same
+ * public bucket). Collections used to store base64 data URLs in the DB — this
+ * moves them to Storage like products already do.
+ */
+export function uploadCollectionImage(
+  supabase: SupabaseClient,
+  blob: Blob,
+): Promise<string> {
+  return uploadImage(supabase, blob, "collections/");
 }
 
 /**

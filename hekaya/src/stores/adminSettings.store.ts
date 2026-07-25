@@ -85,16 +85,29 @@ export const useAdminSettings = create<AdminSettingsState>()((set, get) => ({
     }
   },
   // Update optimistically, then await the DB write so the caller can surface a
-  // real error (e.g. a rejected write) instead of a false "Saved".
+  // real error (e.g. a rejected write) instead of a false "Saved". Roll back the
+  // optimistic value on failure so the UI never keeps showing unsaved data.
   setStore: async (s) => {
-    const store = { ...get().store, ...s };
+    const prev = get().store;
+    const store = { ...prev, ...s };
     set({ store });
-    await persistSettings({ store, shipping: get().shipping });
+    try {
+      await persistSettings({ store, shipping: get().shipping });
+    } catch (e) {
+      set({ store: prev });
+      throw e;
+    }
   },
   setShipping: async (sh) => {
-    const shipping = { ...get().shipping, ...sh };
+    const prev = get().shipping;
+    const shipping = { ...prev, ...sh };
     set({ shipping });
-    await persistSettings({ store: get().store, shipping });
+    try {
+      await persistSettings({ store: get().store, shipping });
+    } catch (e) {
+      set({ shipping: prev });
+      throw e;
+    }
   },
 }));
 

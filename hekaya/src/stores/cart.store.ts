@@ -14,15 +14,18 @@ type CartState = {
   removeItem: (productId: string, variationId?: string) => void;
   updateQty: (productId: string, qty: number, variationId?: string) => void;
   clear: () => void;
-  subtotal: () => number;
-  count: () => number;
+  /**
+   * Sync each line's persisted price to the live catalog price. Returns the
+   * number of lines whose price changed (0 = nothing stale).
+   */
+  reconcilePrices: (priceOf: (productId: string) => number | undefined) => number;
 };
 
 const keyOf = (id: string, v?: string) => `${id}__${v ?? ""}`;
 
 export const useCartStore = create<CartState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       items: [],
       isOpen: false,
       qrChoice: "per_order",
@@ -52,18 +55,27 @@ export const useCartStore = create<CartState>()(
         })),
       updateQty: (productId, qty, variationId) =>
         set((state) => ({
-          items: state.items
-            .map((i) =>
-              keyOf(i.productId, i.variationId) ===
-              keyOf(productId, variationId)
-                ? { ...i, qty: Math.max(1, qty) }
-                : i,
-            )
-            .filter((i) => i.qty > 0),
+          items: state.items.map((i) =>
+            keyOf(i.productId, i.variationId) === keyOf(productId, variationId)
+              ? { ...i, qty: Math.max(1, qty) }
+              : i,
+          ),
         })),
       clear: () => set({ items: [] }),
-      subtotal: () => get().items.reduce((sum, i) => sum + i.price * i.qty, 0),
-      count: () => get().items.reduce((sum, i) => sum + i.qty, 0),
+      reconcilePrices: (priceOf) => {
+        let changed = 0;
+        set((state) => ({
+          items: state.items.map((i) => {
+            const live = priceOf(i.productId);
+            if (live !== undefined && live !== i.price) {
+              changed++;
+              return { ...i, price: live };
+            }
+            return i;
+          }),
+        }));
+        return changed;
+      },
     }),
     { name: "mashaer-cart" },
   ),

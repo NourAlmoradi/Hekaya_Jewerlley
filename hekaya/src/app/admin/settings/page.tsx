@@ -255,8 +255,10 @@ function NumberInput({
       <div className="relative">
         <input
           type="number"
+          min={0}
+          step="0.01"
           value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
+          onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
           className={cn(
             "w-full rounded-md border border-white/10 bg-[#0a0a0a] px-3 py-2.5 text-sm text-white focus:border-[#c9a96e]/40 focus:outline-none",
             suffix && "pe-14",

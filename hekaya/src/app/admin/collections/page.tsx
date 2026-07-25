@@ -22,18 +22,15 @@ import { useCollections } from "@/lib/useCollections";
 import { useProducts } from "@/lib/useProducts";
 import { PlaceholderJewel } from "@/components/ui/PlaceholderJewel";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { prepareImage, ImageError } from "@/lib/image";
+import {
+  uploadCollectionImage,
+  deleteImagesByUrl,
+} from "@/lib/supabase/storage";
 import type { Collection } from "@/types";
 
 const DEFAULT_TONE = "#e8dfcc";
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
 
 export default function AdminCollections() {
   const { t, locale } = useT();
@@ -46,6 +43,11 @@ export default function AdminCollections() {
   const [editing, setEditing] = useState<Collection | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // The image saved when the modal opened — used to avoid orphaning storage
+  // objects when the admin replaces/removes an image or cancels the modal.
+  const [origImage, setOrigImage] = useState<string | undefined>(undefined);
+  const [imgBusy, setImgBusy] = useState(false);
+  const [migrating, setMigrating] = useState(false);
 
   const sorted = useMemo(
     () => [...collections].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -76,17 +78,72 @@ export default function AdminCollections() {
       sortOrder: collections.length,
       createdAt: new Date().toISOString(),
     });
+    setOrigImage(undefined);
     setOpen(true);
   };
 
   const openEdit = (c: Collection) => {
     setEditing({ ...c });
+    setOrigImage(c.image);
     setOpen(true);
   };
 
   const isExisting = editing
     ? collections.some((c) => c.id === editing.id)
     : false;
+
+  // Validate + downscale, upload to Storage, store the public URL (not base64).
+  const onPickImage = async (file: File | undefined) => {
+    if (!file || !editing) return;
+    setImgBusy(true);
+    try {
+      const blob = await prepareImage(file, { maxDim: 1600, quality: 0.9 });
+      const url = await uploadCollectionImage(createClient(), blob);
+      // If we're replacing an unsaved upload, delete the previous one.
+      const prev = editing.image;
+      if (prev && prev !== origImage) {
+        void deleteImagesByUrl(createClient(), [prev]).catch(() => {});
+      }
+      setEditing((cur) => (cur ? { ...cur, image: url } : cur));
+    } catch (e) {
+      if (e instanceof ImageError && e.code === "not-image") {
+        toast.error(
+          locale === "ar" ? "الملف ليس صورة" : "That file isn't an image",
+        );
+      } else if (e instanceof ImageError && e.code === "too-large") {
+        toast.error(
+          locale === "ar"
+            ? "الصورة كبيرة جدًا (الحد 12 ميغابايت)"
+            : "Image too large (12 MB max)",
+        );
+      } else {
+        toast.error(
+          locale === "ar" ? "تعذّر رفع الصورة" : "Could not upload image",
+        );
+      }
+    } finally {
+      setImgBusy(false);
+    }
+  };
+
+  const clearImage = () => {
+    if (!editing) return;
+    const prev = editing.image;
+    if (prev && prev !== origImage) {
+      void deleteImagesByUrl(createClient(), [prev]).catch(() => {});
+    }
+    setEditing({ ...editing, image: undefined });
+  };
+
+  // Cancel the modal, deleting any freshly-uploaded (unsaved) image so it isn't
+  // orphaned in Storage (the product-images bucket has no sweep).
+  const closeModal = () => {
+    if (editing?.image && editing.image !== origImage) {
+      void deleteImagesByUrl(createClient(), [editing.image]).catch(() => {});
+    }
+    setOpen(false);
+    setEditing(null);
+  };
 
   const save = async () => {
     if (!editing) return;
@@ -100,9 +157,52 @@ export default function AdminCollections() {
       toast.error(locale === "ar" ? "تعذّر الحفظ" : "Could not save");
       return;
     }
+    // A replaced saved image is now unreferenced — remove it from Storage.
+    if (origImage && origImage !== editing.image) {
+      void deleteImagesByUrl(createClient(), [origImage]).catch(() => {});
+    }
     setOpen(false);
     setEditing(null);
     toast.success(locale === "ar" ? "تم الحفظ" : "Saved");
+  };
+
+  // One-time migration: move any legacy base64 collection images to Storage.
+  const base64Count = collections.filter((c) =>
+    c.image?.startsWith("data:"),
+  ).length;
+
+  const migrateBase64Images = async () => {
+    const targets = collections.filter((c) => c.image?.startsWith("data:"));
+    if (targets.length === 0) return;
+    if (
+      !confirm(
+        locale === "ar"
+          ? `ترحيل ${targets.length} صورة إلى التخزين؟`
+          : `Migrate ${targets.length} base64 image(s) to Storage?`,
+      )
+    )
+      return;
+    setMigrating(true);
+    const supabase = createClient();
+    let ok = 0;
+    for (const c of targets) {
+      try {
+        const raw = await (await fetch(c.image!)).blob();
+        const file = new File([raw], "collection", {
+          type: raw.type || "image/jpeg",
+        });
+        const blob = await prepareImage(file, { maxDim: 1600, quality: 0.9 });
+        const url = await uploadCollectionImage(supabase, blob);
+        await saveCollection({ ...c, image: url }, false);
+        ok++;
+      } catch {
+        // Skip this row; keep migrating the rest.
+      }
+    }
+    setMigrating(false);
+    toast.success(
+      locale === "ar" ? `تم ترحيل ${ok} صورة` : `Migrated ${ok} image(s)`,
+    );
   };
 
   const remove = async (c: Collection) => {
@@ -170,13 +270,36 @@ export default function AdminCollections() {
             {collections.length} {locale === "ar" ? "مجموعة" : "collections"}
           </p>
         </div>
-        <button
-          onClick={openNew}
-          className="inline-flex items-center gap-2 rounded-md bg-[#c9a96e] px-5 py-2.5 text-sm font-semibold text-[#1a1a1a] shadow-[0_4px_14px_rgba(201,169,110,0.25)] transition hover:bg-[#b8944d]"
-        >
-          <Plus className="h-4 w-4" />
-          {locale === "ar" ? "إضافة مجموعة" : "Add Collection"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {base64Count > 0 && (
+            <button
+              onClick={migrateBase64Images}
+              disabled={migrating}
+              className="inline-flex items-center gap-2 rounded-md border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-sm font-semibold text-amber-300 transition hover:bg-amber-400/20 disabled:opacity-60"
+              title={
+                locale === "ar"
+                  ? "نقل صور المجموعات القديمة (base64) إلى التخزين"
+                  : "Move legacy base64 collection images to Storage"
+              }
+            >
+              <Upload className="h-4 w-4" />
+              {migrating
+                ? locale === "ar"
+                  ? "جارٍ الترحيل…"
+                  : "Migrating…"
+                : locale === "ar"
+                  ? `ترحيل الصور (${base64Count})`
+                  : `Migrate images (${base64Count})`}
+            </button>
+          )}
+          <button
+            onClick={openNew}
+            className="inline-flex items-center gap-2 rounded-md bg-[#c9a96e] px-5 py-2.5 text-sm font-semibold text-[#1a1a1a] shadow-[0_4px_14px_rgba(201,169,110,0.25)] transition hover:bg-[#b8944d]"
+          >
+            <Plus className="h-4 w-4" />
+            {locale === "ar" ? "إضافة مجموعة" : "Add Collection"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 max-w-md">
@@ -267,7 +390,14 @@ export default function AdminCollections() {
                   <div className="inline-flex rounded-md ring-1 ring-white/10">
                     <button
                       onClick={() => move(c.id, -1)}
-                      disabled={i === 0}
+                      disabled={i === 0 || query.trim() !== ""}
+                      title={
+                        query.trim() !== ""
+                          ? locale === "ar"
+                            ? "امسح البحث لإعادة الترتيب"
+                            : "Clear search to reorder"
+                          : undefined
+                      }
                       className="grid h-8 w-8 place-items-center text-white/70 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
                       aria-label="Move up"
                     >
@@ -275,7 +405,14 @@ export default function AdminCollections() {
                     </button>
                     <button
                       onClick={() => move(c.id, 1)}
-                      disabled={i === filtered.length - 1}
+                      disabled={i === filtered.length - 1 || query.trim() !== ""}
+                      title={
+                        query.trim() !== ""
+                          ? locale === "ar"
+                            ? "امسح البحث لإعادة الترتيب"
+                            : "Clear search to reorder"
+                          : undefined
+                      }
                       className="grid h-8 w-8 place-items-center text-white/70 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-30"
                       aria-label="Move down"
                     >
@@ -321,7 +458,7 @@ export default function AdminCollections() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4"
-            onClick={() => setOpen(false)}
+            onClick={closeModal}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -341,7 +478,7 @@ export default function AdminCollections() {
                       : "Add Collection"}
                 </h3>
                 <button
-                  onClick={() => setOpen(false)}
+                  onClick={closeModal}
                   className="grid h-8 w-8 place-items-center rounded-md text-white/70 hover:bg-white/[0.06]"
                 >
                   <X className="h-4 w-4" />
@@ -423,6 +560,11 @@ export default function AdminCollections() {
                         alt=""
                         className="aspect-[16/9] w-full object-cover"
                       />
+                      {imgBusy && (
+                        <div className="absolute inset-0 grid place-items-center bg-black/50">
+                          <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#c9a96e]/30 border-t-[#c9a96e]" />
+                        </div>
+                      )}
                       <div className="absolute end-2 top-2 flex gap-1">
                         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur transition hover:bg-black/85">
                           <Upload className="h-3.5 w-3.5" />
@@ -430,22 +572,17 @@ export default function AdminCollections() {
                           <input
                             type="file"
                             accept="image/*"
+                            disabled={imgBusy}
                             className="sr-only"
                             onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f)
-                                readAsDataUrl(f).then((url) =>
-                                  setEditing({ ...editing, image: url }),
-                                );
+                              void onPickImage(e.target.files?.[0]);
                               e.currentTarget.value = "";
                             }}
                           />
                         </label>
                         <button
                           type="button"
-                          onClick={() =>
-                            setEditing({ ...editing, image: undefined })
-                          }
+                          onClick={clearImage}
                           className="grid h-8 w-8 place-items-center rounded-md bg-black/70 text-white backdrop-blur transition hover:bg-rose-500/80"
                           aria-label={t("delete")}
                         >
@@ -454,26 +591,34 @@ export default function AdminCollections() {
                       </div>
                     </div>
                   ) : (
-                    <label className="flex aspect-[16/9] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 bg-[#0a0a0a] text-sm text-white/60 transition hover:border-[#c9a96e]/50 hover:text-white">
-                      <Upload className="h-6 w-6" />
-                      <span className="font-medium">
-                        {locale === "ar" ? "ارفع صورة" : "Upload image"}
-                      </span>
-                      <span className="text-[11px] text-white/40">
-                        {locale === "ar"
-                          ? "يفضل بأبعاد أفقية (16:9)"
-                          : "Wide / landscape (16:9) recommended"}
-                      </span>
+                    <label
+                      className={cn(
+                        "flex aspect-[16/9] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 bg-[#0a0a0a] text-sm text-white/60 transition hover:border-[#c9a96e]/50 hover:text-white",
+                        imgBusy ? "cursor-wait opacity-60" : "cursor-pointer",
+                      )}
+                    >
+                      {imgBusy ? (
+                        <span className="h-6 w-6 animate-spin rounded-full border-2 border-[#c9a96e]/30 border-t-[#c9a96e]" />
+                      ) : (
+                        <>
+                          <Upload className="h-6 w-6" />
+                          <span className="font-medium">
+                            {locale === "ar" ? "ارفع صورة" : "Upload image"}
+                          </span>
+                          <span className="text-[11px] text-white/40">
+                            {locale === "ar"
+                              ? "يفضل بأبعاد أفقية (16:9)"
+                              : "Wide / landscape (16:9) recommended"}
+                          </span>
+                        </>
+                      )}
                       <input
                         type="file"
                         accept="image/*"
+                        disabled={imgBusy}
                         className="sr-only"
                         onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f)
-                            readAsDataUrl(f).then((url) =>
-                              setEditing({ ...editing, image: url }),
-                            );
+                          void onPickImage(e.target.files?.[0]);
                           e.currentTarget.value = "";
                         }}
                       />
@@ -511,7 +656,7 @@ export default function AdminCollections() {
 
               <div className="flex justify-end gap-2 border-t border-white/5 px-6 py-4">
                 <button
-                  onClick={() => setOpen(false)}
+                  onClick={closeModal}
                   className="rounded-md px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/[0.06]"
                 >
                   {t("back")}

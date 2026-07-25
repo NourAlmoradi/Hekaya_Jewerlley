@@ -28,17 +28,11 @@ import {
 import { useProducts } from "@/lib/useProducts";
 import { useAddressesStore } from "@/stores/addresses.store";
 import type { Address } from "@/lib/supabase/addresses";
-import { emirateLabel } from "@/lib/emirates";
+import { EMIRATES, emirateKeyFrom, emirateLabel } from "@/lib/emirates";
 
-const EMIRATES = [
-  { ar: "أبوظبي", en: "Abu Dhabi" },
-  { ar: "دبي", en: "Dubai" },
-  { ar: "الشارقة", en: "Sharjah" },
-  { ar: "عجمان", en: "Ajman" },
-  { ar: "أم القيوين", en: "Umm Al Quwain" },
-  { ar: "رأس الخيمة", en: "Ras Al Khaimah" },
-  { ar: "الفجيرة", en: "Fujairah" },
-];
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// UAE mobile: 05XXXXXXXX or +9715XXXXXXXX (spaces/dashes stripped before test).
+const UAE_PHONE_RE = /^(?:\+9715|05)\d{8}$/;
 
 export default function CheckoutClient() {
   const { t, locale, dir } = useT();
@@ -48,31 +42,17 @@ export default function CheckoutClient() {
   const qrChoice = useCartStore((s) => s.qrChoice);
   const setQrChoice = useCartStore((s) => s.setQrChoice);
   const clear = useCartStore((s) => s.clear);
+  const reconcilePrices = useCartStore((s) => s.reconcilePrices);
   const addOrder = useOrdersStore((s) => s.addOrder);
   const { user } = useAuth();
   const allProducts = useProducts();
   const shippingRates = useAdminSettings((s) => s.shipping);
 
-  // Map an emirate label (AR or EN) to the admin-configured rate.
+  // Resolve the admin-configured rate from the canonical emirate key. Handles
+  // legacy stored labels too, since emirateKeyFrom normalises label → key.
   const rateForEmirate = (em: string): number => {
-    const k = em.toLowerCase();
-    if (k.includes("دبي") || k.includes("dubai")) return shippingRates.dubai;
-    if (
-      k.includes("أبوظبي") ||
-      k.includes("أبو ظبي") ||
-      k.includes("abu dhabi")
-    )
-      return shippingRates.abuDhabi;
-    if (k.includes("الشارقة") || k.includes("sharjah"))
-      return shippingRates.sharjah;
-    if (k.includes("عجمان") || k.includes("ajman")) return shippingRates.ajman;
-    if (k.includes("أم القيوين") || k.includes("umm al quwain"))
-      return shippingRates.ummAlQuwain;
-    if (k.includes("رأس الخيمة") || k.includes("ras al khaimah"))
-      return shippingRates.rasAlKhaimah;
-    if (k.includes("الفجيرة") || k.includes("fujairah"))
-      return shippingRates.fujairah;
-    return shippingRates.dubai;
+    const key = emirateKeyFrom(em) as keyof typeof shippingRates;
+    return shippingRates[key] ?? shippingRates.dubai;
   };
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -82,7 +62,7 @@ export default function CheckoutClient() {
     phone: "",
     addressLine: "",
     city: "",
-    emirate: locale === "ar" ? "دبي" : "Dubai",
+    emirate: "dubai", // canonical key (see lib/emirates); label rendered via emirateLabel
     postalCode: "",
     notes: "",
   });
@@ -91,6 +71,10 @@ export default function CheckoutClient() {
   );
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState(false); // guard: order submitted, cart cleared
+  // Set when cart line prices were bumped to match the live catalog (H6).
+  const [priceNotice, setPriceNotice] = useState(false);
+  // Inline validation errors for step 1 (M12).
+  const [errors, setErrors] = useState<{ email?: string; phone?: string }>({});
 
   // Saved addresses from the account address book (Supabase-backed).
   const savedAddresses = useAddressesStore((s) => s.addresses);
@@ -104,7 +88,7 @@ export default function CheckoutClient() {
       phone: a.phone,
       addressLine: a.addressLine,
       city: a.city,
-      emirate: emirateLabel(a.emirate, locale),
+      emirate: emirateKeyFrom(a.emirate), // store the canonical key
     }));
     setUsedAddressId(a.id);
   };
@@ -116,6 +100,17 @@ export default function CheckoutClient() {
     setHydrated(true);
     void loadAddresses();
   }, [loadAddresses]);
+
+  // Reconcile persisted cart prices against the live catalog once it loads. If
+  // the admin changed a price after the item was added, update the line and flag
+  // a notice — this avoids the dead-end where place_order rejects a stale price.
+  useEffect(() => {
+    if (allProducts.length === 0) return;
+    const changed = reconcilePrices(
+      (id) => allProducts.find((p) => p.id === id)?.price,
+    );
+    if (changed > 0) setPriceNotice(true);
+  }, [allProducts, reconcilePrices]);
 
   const sub = subtotal;
   // Delivery is charged by emirate (admin-configured). No free-delivery threshold.
@@ -182,6 +177,23 @@ export default function CheckoutClient() {
         );
         return;
       }
+      // Format checks — the email receives the order + QR memory links, and the
+      // phone is what the courier calls, so a silent typo is costly (M12).
+      const nextErrors: { email?: string; phone?: string } = {};
+      if (!EMAIL_RE.test(shipping.email.trim())) {
+        nextErrors.email =
+          locale === "ar"
+            ? "يرجى إدخال بريد إلكتروني صحيح"
+            : "Enter a valid email address";
+      }
+      if (!UAE_PHONE_RE.test(shipping.phone.replace(/[\s-]/g, ""))) {
+        nextErrors.phone =
+          locale === "ar"
+            ? "يرجى إدخال رقم إماراتي صحيح (05XXXXXXXX)"
+            : "Enter a valid UAE mobile (05XXXXXXXX)";
+      }
+      setErrors(nextErrors);
+      if (nextErrors.email || nextErrors.phone) return;
     }
     setStep((s) => (s === 3 ? s : ((s + 1) as 1 | 2 | 3)));
   };
@@ -253,8 +265,23 @@ export default function CheckoutClient() {
         createdAt: new Date().toISOString(),
       });
       if (!ok) throw new Error("not-signed-in");
-    } catch {
+    } catch (e) {
       setPlacing(false);
+      const msg = (e as Error)?.message ?? "";
+      // place_order rejects a stale cart price ("Item price does not match the
+      // catalog"). Refresh the line prices, flag the notice, and send the
+      // customer back to review with a specific, actionable message (H6).
+      if (/price/i.test(msg) && /catalog/i.test(msg)) {
+        reconcilePrices((id) => allProducts.find((p) => p.id === id)?.price);
+        setPriceNotice(true);
+        setStep(2);
+        toast.error(
+          locale === "ar"
+            ? "تغيّرت أسعار بعض المنتجات وحدّثنا سلتك — يرجى المراجعة والمحاولة مجددًا."
+            : "Some prices changed and we updated your cart — please review and try again.",
+        );
+        return;
+      }
       toast.error(
         locale === "ar"
           ? "تعذّر إتمام الطلب، حاول مرة أخرى"
@@ -328,6 +355,16 @@ export default function CheckoutClient() {
           })}
         </div>
 
+        {/* Price-change notice (H6): cart line prices were updated to match the
+            live catalog before the customer submits. */}
+        {priceNotice && (
+          <div className="mx-auto mb-6 max-w-xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm text-amber-800">
+            {locale === "ar"
+              ? "تم تحديث أسعار بعض المنتجات لتطابق الكتالوج الحالي. يرجى مراجعة الإجمالي قبل المتابعة."
+              : "Some prices were updated to match the current catalogue. Please review your total before continuing."}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
           {/* Main panel */}
           <motion.div
@@ -395,12 +432,23 @@ export default function CheckoutClient() {
                     label={t("email")}
                     type="email"
                     value={shipping.email}
-                    onChange={(v) => setShipping({ ...shipping, email: v })}
+                    error={errors.email}
+                    onChange={(v) => {
+                      setShipping({ ...shipping, email: v });
+                      if (errors.email)
+                        setErrors((x) => ({ ...x, email: undefined }));
+                    }}
                   />
                   <Field
                     label={t("phone")}
+                    type="tel"
                     value={shipping.phone}
-                    onChange={(v) => setShipping({ ...shipping, phone: v })}
+                    error={errors.phone}
+                    onChange={(v) => {
+                      setShipping({ ...shipping, phone: v });
+                      if (errors.phone)
+                        setErrors((x) => ({ ...x, phone: undefined }));
+                    }}
                   />
                   <Field
                     label={t("city")}
@@ -426,11 +474,8 @@ export default function CheckoutClient() {
                       className="input"
                     >
                       {EMIRATES.map((em) => (
-                        <option
-                          key={em.en}
-                          value={locale === "ar" ? em.ar : em.en}
-                        >
-                          {locale === "ar" ? em.ar : em.en}
+                        <option key={em.key} value={em.key}>
+                          {emirateLabel(em.key, locale)}
                         </option>
                       ))}
                     </select>
@@ -512,7 +557,8 @@ export default function CheckoutClient() {
                     {shipping.fullName}
                   </p>
                   <p>
-                    {shipping.addressLine}, {shipping.city}, {shipping.emirate}
+                    {shipping.addressLine}, {shipping.city},{" "}
+                    {emirateLabel(shipping.emirate, locale)}
                   </p>
                   <p>
                     {shipping.phone} · {shipping.email}
@@ -724,11 +770,13 @@ function Field({
   value,
   onChange,
   type = "text",
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  error?: string;
 }) {
   return (
     <div>
@@ -737,8 +785,10 @@ function Field({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="input"
+        aria-invalid={error ? true : undefined}
+        className={cn("input", error && "border-red-400 focus:border-red-400")}
       />
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
   );
 }

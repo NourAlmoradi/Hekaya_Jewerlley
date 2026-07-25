@@ -30,9 +30,6 @@ export function ProductDetail({ product }: { product: Product }) {
   const { addItem, setOpen } = useCartStore();
   const { inWishlist, toggle: toggleWishlist } = useWishlistToggle(product.id);
   const [qty, setQty] = useState(1);
-  const [selectedVariation, setSelectedVariation] = useState(
-    product.variations?.[0]?.id,
-  );
   const [activeImage, setActiveImage] = useState(0);
   const [tab, setTab] = useState<"description" | "shipping" | "care">(
     "description",
@@ -43,8 +40,8 @@ export function ProductDetail({ product }: { product: Product }) {
     ? tx(product.material)
     : t("pdp_material_default");
 
-  const variation = product.variations?.find((v) => v.id === selectedVariation);
-  const price = variation?.priceOverride ?? product.price;
+  // Fixed-size store: no variation picker, price is always the product's price.
+  const price = product.price;
 
   const handleAdd = (openCart = false) => {
     addItem({
@@ -53,13 +50,6 @@ export function ProductDetail({ product }: { product: Product }) {
       name: product.name,
       price,
       qty,
-      variationId: selectedVariation,
-      variationLabel: variation
-        ? {
-            ar: variation.size || variation.material || "",
-            en: variation.size || variation.material || "",
-          }
-        : undefined,
     });
     toast.success(`${tx(product.name)} — ${t("added_to_cart")}`);
     if (openCart) setOpen(true);
@@ -181,7 +171,7 @@ export function ProductDetail({ product }: { product: Product }) {
 
           {/* Age + Material chips */}
           <div className="mt-4 flex flex-wrap gap-2">
-            {product.ageRange && (
+            {product.ageRange && tx(product.ageRange) && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-primary-soft)] px-3 py-1 text-xs font-medium text-[var(--color-primary-dark)]">
                 <span className="text-[10px] uppercase tracking-wider opacity-70">
                   {t("pdp_age")}
@@ -200,29 +190,6 @@ export function ProductDetail({ product }: { product: Product }) {
           </div>
 
           <div className="my-6 h-px bg-[var(--color-border)]" />
-
-          {/* Variations */}
-          {product.variations && product.variations.length > 0 && (
-            <div className="mb-6">
-              <p className="label">{t("size")}</p>
-              <div className="flex flex-wrap gap-2">
-                {product.variations.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => setSelectedVariation(v.id)}
-                    className={cn(
-                      "min-w-[64px] rounded border px-4 py-2 text-sm font-medium transition",
-                      selectedVariation === v.id
-                        ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-white"
-                        : "border-[var(--color-border)] bg-white text-[var(--color-ink)] hover:border-[var(--color-primary)]",
-                    )}
-                  >
-                    {v.size || v.material}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Quantity */}
           <div className="mb-6">

@@ -28,7 +28,7 @@ import {
 import { useProducts } from "@/lib/useProducts";
 import { Logo } from "@/components/ui/Logo";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { prepareImageDataUrl } from "@/lib/image";
 
 export default function MemoryPage({
@@ -66,6 +66,12 @@ export default function MemoryPage({
   };
 
   useEffect(() => {
+    // The demo token renders a fixed, read-only showcase (see below) — never
+    // hit the database for it.
+    if (token === "demo") {
+      setLoadingMemory(false);
+      return;
+    }
     let active = true;
     // Watchdog: the whole tab shares ONE Supabase client and ONE auth-token
     // lock. If a token refresh wedges that lock, every query hangs and the page
@@ -260,6 +266,48 @@ export default function MemoryPage({
     }
   };
 
+  // ── Demo showcase: a fixed, read-only preview of a finished memory page — no
+  //    PIN gate, no edit button, no save path that can fail (H7). This is what
+  //    the QR page's "Try it live" CTA links to (/memory/demo).
+  if (token === "demo") {
+    const demoPhotos = ["/child.png", "/necklaces.png", "/bracelets.png"];
+    const demoTitle =
+      locale === "ar" ? "ذكرى ميلاد ليان الأولى" : "Layan's First Birthday";
+    const demoMessage =
+      locale === "ar"
+        ? "إلى ابنتنا الغالية ليان،\nفي عامكِ الأول علّمتِنا معنى الفرح الحقيقي. نُهديكِ هذه القطعة لتكبر معكِ وتبقى شاهدةً على حبٍّ لا ينتهي.\nكل الحب، ماما وبابا."
+        : "To our beloved Layan,\nIn your very first year you taught us the meaning of pure joy. This little piece is yours to grow into — a keepsake of a love that never ends.\nAll our love, Mama & Baba.";
+    return (
+      <Wrapper>
+        <Header />
+        <div className="mx-auto mt-6 w-fit rounded-full border border-[var(--color-primary)]/30 bg-[var(--color-primary-soft)] px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wider text-[var(--color-primary-dark)]">
+          {locale === "ar" ? "معاينة توضيحية" : "Demo preview"}
+        </div>
+        <motion.article
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="mt-4 rounded-xl bg-white p-6 shadow-md ring-1 ring-[var(--color-border)] sm:p-10"
+        >
+          <div className="text-center">
+            <Heart className="mx-auto h-7 w-7 text-[var(--color-primary)]" />
+            <h1 className="mt-3 font-display text-3xl font-semibold sm:text-4xl">
+              {demoTitle}
+            </h1>
+          </div>
+          <PhotoCarousel photos={demoPhotos} />
+          <MessageCard
+            message={demoMessage}
+            createdDate=""
+            productName={
+              locale === "ar" ? "سوار الأطفال الذهبي" : "Gold Baby Bracelet"
+            }
+          />
+        </motion.article>
+      </Wrapper>
+    );
+  }
+
   if (loadingMemory) {
     return (
       <Wrapper>
@@ -409,7 +457,9 @@ export default function MemoryPage({
   const linkedProduct = memory.productId
     ? allProducts.find((p) => p.id === memory.productId)
     : undefined;
-  const createdDate = memory.createdAt ? memory.createdAt.slice(0, 10) : "";
+  const createdDate = memory.createdAt
+    ? formatDate(memory.createdAt, locale)
+    : "";
 
   return (
     <Wrapper>

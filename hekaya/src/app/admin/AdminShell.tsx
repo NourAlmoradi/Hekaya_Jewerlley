@@ -37,7 +37,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       router.replace("/account");
       return;
     }
-    if (profile && !profile.isAdmin) {
+    // Treat a missing profile as "not admin". `profile` is null both for a
+    // genuinely non-admin row and for a failed/hung profile read (see
+    // AuthProvider's 8s watchdog) — either way the admin UI must not show.
+    if (!profile?.isAdmin) {
       router.replace("/");
     }
   }, [loading, user, profile, router]);
@@ -96,8 +99,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   const ChevronInline = locale === "ar" ? ChevronLeft : ChevronRight;
 
-  // Block render until we've confirmed an admin session.
-  if (loading || !user || (profile && !profile.isAdmin)) {
+  // Block render until we've confirmed an admin session. A null profile (failed
+  // read or non-admin) never renders the shell — only a confirmed `isAdmin`.
+  if (loading || !user || !profile?.isAdmin) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#0f0f0f] text-white">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#c9a96e] border-t-transparent" />

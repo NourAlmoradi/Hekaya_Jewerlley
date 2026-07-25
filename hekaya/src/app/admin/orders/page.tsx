@@ -13,9 +13,11 @@ import type { Order, OrderStatus } from "@/types";
 
 const ALL_STATUSES: OrderStatus[] = [
   "pending",
+  "paid",
   "processing",
   "shipped",
   "delivered",
+  "cancelled",
 ];
 
 const STATUS_PILL: Record<OrderStatus, string> = {
@@ -42,7 +44,13 @@ export default function AdminOrders() {
     const q = query.trim().toLowerCase();
     return all.filter((o) => {
       if (filter !== "all" && o.status !== filter) return false;
-      if (q && !o.id.toLowerCase().includes(q)) return false;
+      if (
+        q &&
+        !o.id.toLowerCase().includes(q) &&
+        !o.customerName.toLowerCase().includes(q) &&
+        !o.email.toLowerCase().includes(q)
+      )
+        return false;
       return true;
     });
   }, [all, query, filter]);
@@ -50,9 +58,11 @@ export default function AdminOrders() {
   const tabs: { id: Filter; label: string }[] = [
     { id: "all", label: t("admin_filter_all") },
     { id: "pending", label: t("status_pending") },
+    { id: "paid", label: t("status_paid") },
     { id: "processing", label: t("status_processing") },
     { id: "shipped", label: t("status_shipped") },
     { id: "delivered", label: t("status_delivered") },
+    { id: "cancelled", label: t("status_cancelled") },
   ];
 
   return (

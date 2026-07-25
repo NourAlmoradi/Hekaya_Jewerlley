@@ -71,7 +71,7 @@ export default function QrInfoPage() {
               ? "افتح صفحة ذكرى تجريبية واختبر التجربة كاملة."
               : "Open a demo memory page and experience the full flow."}
           </p>
-          <Link href="/memory/demo1234" className="btn btn-gold btn-lg mt-6">
+          <Link href="/memory/demo" className="btn btn-gold btn-lg mt-6">
             <QrCode className="h-4 w-4" />
             {locale === "ar" ? "افتح ذكرى تجريبية" : "Open Demo Memory"}
           </Link>

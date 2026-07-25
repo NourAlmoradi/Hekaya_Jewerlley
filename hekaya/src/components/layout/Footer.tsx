@@ -56,7 +56,7 @@ export function Footer() {
     ? `https://facebook.com/${fbHandle}`
     : "https://facebook.com";
   return (
-    <footer className="mt-24 bg-[var(--color-bg-dark)] text-white/80">
+    <footer className="mt-1 bg-[var(--color-bg-dark)] text-white/80">
       <div className="container-h grid grid-cols-1 gap-12 py-16 md:grid-cols-2 lg:grid-cols-4">
         {/* Brand */}
         <div className="space-y-4">

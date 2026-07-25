@@ -37,6 +37,12 @@ export default function AdminProducts() {
 
   const isNewProduct = (id: string) => !merged.some((p) => p.id === id);
 
+  // Localized category name for the table (falls back to the raw id).
+  const categoryName = (id: string) => {
+    const c = categories.find((cat) => cat.id === id);
+    return c ? (locale === "ar" ? c.name.ar : c.name.en) : id;
+  };
+
   const visible = merged;
 
   const filtered = useMemo(() => {
@@ -53,7 +59,7 @@ export default function AdminProducts() {
   const openNew = () => {
     setEditing({
       id: `p${Date.now()}`,
-      slug: `new-${Date.now()}`,
+      slug: "", // derived from the name on save (see productToRow)
       name: { ar: "", en: "" },
       description: { ar: "", en: "" },
       price: 0,
@@ -64,10 +70,7 @@ export default function AdminProducts() {
       isActive: true,
       isQrEligible: true,
       isFeatured: false,
-      ageRange: { ar: "", en: "" },
       material: { ar: "", en: "" },
-      availableSizes: ["M"],
-      availableAges: ["adults"],
       createdAt: new Date().toISOString(),
     });
     setOrigImages([]);
@@ -153,6 +156,19 @@ export default function AdminProducts() {
     setOpen(false);
     setEditing(null);
     toast.success(locale === "ar" ? "تم الحفظ" : "Saved");
+  };
+
+  // Cancel the modal (X / backdrop / Back), deleting any images uploaded this
+  // session that were never saved — the product-images bucket has no orphan
+  // sweep, so unsaved uploads would otherwise leak forever (M8).
+  const closeModal = () => {
+    if (editing) {
+      const orphans = editing.images.filter((u) => !origImages.includes(u));
+      if (orphans.length)
+        void deleteImagesByUrl(createClient(), orphans).catch(() => {});
+    }
+    setOpen(false);
+    setEditing(null);
   };
 
   const remove = async (id: string) => {
@@ -263,8 +279,8 @@ export default function AdminProducts() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4 capitalize text-white/60">
-                    {p.categoryId}
+                  <td className="px-4 py-4 text-white/60">
+                    {categoryName(p.categoryId)}
                   </td>
                   <td className="px-4 py-4">
                     <p className="font-semibold text-white">
@@ -365,8 +381,8 @@ export default function AdminProducts() {
                   </p>
                   <p className="truncate text-xs text-white/40">{p.name.ar}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                    <span className="capitalize text-white/60">
-                      {p.categoryId}
+                    <span className="text-white/60">
+                      {categoryName(p.categoryId)}
                     </span>
                     <span className="font-semibold text-white">
                       {formatPrice(p.price, locale)}
@@ -436,7 +452,7 @@ export default function AdminProducts() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4"
-            onClick={() => setOpen(false)}
+            onClick={closeModal}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -450,7 +466,7 @@ export default function AdminProducts() {
                   {!isNewProduct(editing.id) ? t("edit") : t("add_product")}
                 </h3>
                 <button
-                  onClick={() => setOpen(false)}
+                  onClick={closeModal}
                   className="grid h-8 w-8 place-items-center rounded-md text-white/70 hover:bg-white/[0.06]"
                 >
                   <X className="h-4 w-4" />
@@ -563,90 +579,36 @@ export default function AdminProducts() {
                   />
                 </div>
 
-                {/* Suitable Age (multi-select) */}
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">
-                    {locale === "ar"
-                      ? "الفئات العمرية المتاحة"
-                      : "Suitable Ages (multi-select)"}
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {AGE_CHOICES.map((a) => {
-                      const checked =
-                        editing.availableAges?.includes(a.key) ?? false;
-                      return (
-                        <button
-                          key={a.key}
-                          type="button"
-                          onClick={() => {
-                            const cur = editing.availableAges ?? [];
-                            const next = checked
-                              ? cur.filter((k) => k !== a.key)
-                              : [...cur, a.key];
-                            setEditing({ ...editing, availableAges: next });
-                          }}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 text-xs font-medium transition",
-                            checked
-                              ? "border-[#c9a96e] bg-[#c9a96e]/15 text-[#c9a96e]"
-                              : "border-white/10 bg-[#0a0a0a] text-white/60 hover:border-white/25 hover:text-white",
-                          )}
-                        >
-                          {locale === "ar" ? a.label.ar : a.label.en}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-2 text-[11px] text-white/40">
-                    {locale === "ar"
-                      ? "اختر فئة واحدة أو أكثر — سيختار العميل من بينها."
-                      : "Pick one or more — the customer will choose from these."}
-                  </p>
-                </div>
-
-                {/* Sizes (multi-select) */}
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">
-                    {locale === "ar"
-                      ? "المقاسات المتاحة"
-                      : "Available Sizes (multi-select)"}
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {SIZE_CHOICES.map((s) => {
-                      const checked =
-                        editing.availableSizes?.includes(s.key) ?? false;
-                      return (
-                        <button
-                          key={s.key}
-                          type="button"
-                          onClick={() => {
-                            const cur = editing.availableSizes ?? [];
-                            const next = checked
-                              ? cur.filter((k) => k !== s.key)
-                              : [...cur, s.key];
-                            setEditing({ ...editing, availableSizes: next });
-                          }}
-                          className={cn(
-                            "rounded-full border px-3 py-1.5 text-xs font-medium transition",
-                            checked
-                              ? "border-[#c9a96e] bg-[#c9a96e]/15 text-[#c9a96e]"
-                              : "border-white/10 bg-[#0a0a0a] text-white/60 hover:border-white/25 hover:text-white",
-                          )}
-                        >
-                          <span className="font-semibold">{s.key}</span>
-                          <span className="ms-1 text-[10px] opacity-70">
-                            {locale === "ar" ? s.label.ar : s.label.en}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-2 text-[11px] text-white/40">
-                    {locale === "ar"
-                      ? "اختر مقاسًا واحدًا أو أكثر — سيختار العميل من بينها."
-                      : "Pick one or more — the customer will choose from these."}
-                  </p>
-                </div>
+                {/* Suitable Age Group — free-text bilingual chip on the PDP
+                    ("مناسب للفئة العمرية"). Fixed-size store: no size picker. */}
+                <FieldDark
+                  label={
+                    locale === "ar"
+                      ? "الفئة العمرية المناسبة (عربي)"
+                      : "Suitable Age Group (AR)"
+                  }
+                  value={editing.ageRange?.ar ?? ""}
+                  onChange={(v) =>
+                    setEditing({
+                      ...editing,
+                      ageRange: { ar: v, en: editing.ageRange?.en ?? "" },
+                    })
+                  }
+                />
+                <FieldDark
+                  label={
+                    locale === "ar"
+                      ? "الفئة العمرية المناسبة (إنجليزي)"
+                      : "Suitable Age Group (EN)"
+                  }
+                  value={editing.ageRange?.en ?? ""}
+                  onChange={(v) =>
+                    setEditing({
+                      ...editing,
+                      ageRange: { ar: editing.ageRange?.ar ?? "", en: v },
+                    })
+                  }
+                />
 
                 {/* Material */}
                 <FieldDark
@@ -782,7 +744,7 @@ export default function AdminProducts() {
               </div>
               <div className="flex justify-end gap-2 border-t border-white/5 px-6 py-4">
                 <button
-                  onClick={() => setOpen(false)}
+                  onClick={closeModal}
                   className="rounded-md px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/[0.06]"
                 >
                   {t("back")}
@@ -833,24 +795,3 @@ function FieldDark({
   );
 }
 
-const AGE_CHOICES: {
-  key: "newborn" | "kids" | "tweens" | "teens" | "adults";
-  label: { ar: string; en: string };
-}[] = [
-  { key: "newborn", label: { ar: "حديثو الولادة (0–2)", en: "Newborn (0–2)" } },
-  { key: "kids", label: { ar: "أطفال (3–6)", en: "Kids (3–6)" } },
-  { key: "tweens", label: { ar: "ناشئون (7–9)", en: "Tweens (7–9)" } },
-  { key: "teens", label: { ar: "مراهقون (10–20)", en: "Teens (10–20)" } },
-  { key: "adults", label: { ar: "بالغون (فوق 20)", en: "Adults (above 20)" } },
-];
-
-const SIZE_CHOICES: {
-  key: "XS" | "S" | "M" | "L" | "XL";
-  label: { ar: string; en: string };
-}[] = [
-  { key: "XS", label: { ar: "0–2", en: "0–2" } },
-  { key: "S", label: { ar: "3–6", en: "3–6" } },
-  { key: "M", label: { ar: "7–9", en: "7–9" } },
-  { key: "L", label: { ar: "10–20", en: "10–20" } },
-  { key: "XL", label: { ar: "فوق 20", en: "20+" } },
-];

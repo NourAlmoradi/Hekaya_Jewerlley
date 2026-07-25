@@ -130,6 +130,9 @@ export const orderConfirmation = (o: Order, locale: Locale) => {
  * their PIN on the /memory/[token] page after they open the link, so we send
  * the link only. Once PINs are minted at checkout (RESEND_SETUP step 9) the
  * plaintext PIN can be passed here and it will be shown.
+ *
+ * NOTE: currently unused — `sendOrderEmails` sends a combined `memoriesLinkAll`
+ * email instead. Kept intentionally for the per-piece PIN phase above.
  */
 export const memoryLink = (
   o: Order,

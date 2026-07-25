@@ -491,19 +491,26 @@ begin
   from public.admin_settings where id = 1;
   v_rates := '{"dubai":0,"abuDhabi":15,"sharjah":10,"ajman":20,"ummAlQuwain":25,"rasAlKhaimah":25,"fujairah":25}'::jsonb
              || coalesce(v_rates, '{}'::jsonb);
+  -- Match the canonical key (checkout now stores e.g. 'dubai', 'abuDhabi') and
+  -- legacy AR/EN labels. v_emirate is lowercased, so camelCase keys collapse to
+  -- 'abudhabi', 'ummalquwain', 'rasalkhaimah'.
   v_emirate := lower(coalesce(p_shipping_address->>'emirate', ''));
   v_shipping := coalesce((v_rates->>(
     case
-      when v_emirate like '%dubai%'         or v_emirate like '%دبي%'        then 'dubai'
-      when v_emirate like '%abu dhabi%'     or v_emirate like '%أبوظبي%'
-        or v_emirate like '%أبو ظبي%'                                        then 'abuDhabi'
-      when v_emirate like '%sharjah%'       or v_emirate like '%الشارقة%'    then 'sharjah'
-      when v_emirate like '%ajman%'         or v_emirate like '%عجمان%'      then 'ajman'
-      when v_emirate like '%umm al quwain%' or v_emirate like '%أم القيوين%' then 'ummAlQuwain'
-      when v_emirate like '%ras al khaimah%' or v_emirate like '%رأس الخيمة%' then 'rasAlKhaimah'
-      when v_emirate like '%fujairah%'      or v_emirate like '%الفجيرة%'    then 'fujairah'
+      when v_emirate like '%dubai%'          or v_emirate like '%دبي%'          then 'dubai'
+      when v_emirate like '%abudhabi%'       or v_emirate like '%abu dhabi%'
+        or v_emirate like '%أبوظبي%'          or v_emirate like '%أبو ظبي%'       then 'abuDhabi'
+      when v_emirate like '%sharjah%'        or v_emirate like '%الشارقة%'      then 'sharjah'
+      when v_emirate like '%ajman%'          or v_emirate like '%عجمان%'        then 'ajman'
+      when v_emirate like '%ummalquwain%'    or v_emirate like '%umm al quwain%'
+        or v_emirate like '%أم القيوين%'                                        then 'ummAlQuwain'
+      when v_emirate like '%rasalkhaimah%'   or v_emirate like '%ras al khaimah%'
+        or v_emirate like '%رأس الخيمة%'                                        then 'rasAlKhaimah'
+      when v_emirate like '%fujairah%'       or v_emirate like '%الفجيرة%'      then 'fujairah'
       else 'dubai'
     end))::numeric, 0);
+  -- Never let a mis-configured negative rate reduce the order total.
+  v_shipping := greatest(v_shipping, 0);
 
   insert into public.orders
     (id, user_id, customer_name, email, subtotal, shipping, total, status,
