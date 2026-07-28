@@ -229,13 +229,36 @@ export default function MemoryPage({
     const pinToUse = meta ? unlockedPin : pinField;
     try {
       const supabase = createClient();
-      await dbSaveMemory(supabase, {
+      const saved = await dbSaveMemory(supabase, {
         token,
         pin: pinToUse,
         title: titleField.trim(),
         message: messageField.trim(),
         photos,
       });
+
+      // A wrong or locked PIN comes back as data, not an exception, so the
+      // failed-attempt counter the server just wrote actually commits (H1).
+      if (saved.status === "locked") {
+        setUnlocked(false);
+        toast.error(
+          locale === "ar"
+            ? `تم قفل الذكرى مؤقتًا. حاول بعد ${saved.minutesLeft} دقيقة.`
+            : `Locked for ${saved.minutesLeft} minute${saved.minutesLeft === 1 ? "" : "s"} after too many wrong attempts.`,
+        );
+        return;
+      }
+      if (saved.status === "wrong") {
+        toast.error(
+          saved.attemptsLeft === null
+            ? t("wrong_pin")
+            : locale === "ar"
+              ? `${t("wrong_pin")} — تبقّى ${saved.attemptsLeft} محاولة`
+              : `Wrong PIN — ${saved.attemptsLeft} attempt${saved.attemptsLeft === 1 ? "" : "s"} left`,
+        );
+        return;
+      }
+
       // Re-read the saved content: owner/admin via RLS, otherwise via the PIN.
       let fresh = await fetchMemoryByToken(supabase, token);
       if (!fresh) {

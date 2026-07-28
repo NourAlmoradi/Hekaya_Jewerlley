@@ -137,13 +137,51 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_messages: {
+        Row: {
+          created_at: string
+          email: string
+          handled: boolean
+          id: string
+          locale: string
+          message: string
+          name: string
+          topic: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          handled?: boolean
+          id?: string
+          locale?: string
+          message: string
+          name: string
+          topic: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          handled?: boolean
+          id?: string
+          locale?: string
+          message?: string
+          name?: string
+          topic?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       memories: {
         Row: {
           created_at: string
+          failed_pin_attempts: number
           message: string
           order_id: string | null
           photos: string[]
           pin_hash: string
+          pin_locked_until: string | null
           product_id: string | null
           product_label: string | null
           title: string
@@ -152,10 +190,12 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          failed_pin_attempts?: number
           message?: string
           order_id?: string | null
           photos?: string[]
           pin_hash: string
+          pin_locked_until?: string | null
           product_id?: string | null
           product_label?: string | null
           title?: string
@@ -164,10 +204,12 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          failed_pin_attempts?: number
           message?: string
           order_id?: string | null
           photos?: string[]
           pin_hash?: string
+          pin_locked_until?: string | null
           product_id?: string | null
           product_label?: string | null
           title?: string
@@ -190,6 +232,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      newsletter_subscribers: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          locale: string
+          unsubscribed_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          locale?: string
+          unsubscribed_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          locale?: string
+          unsubscribed_at?: string | null
+        }
+        Relationships: []
       }
       order_items: {
         Row: {
@@ -236,11 +302,47 @@ export type Database = {
           },
         ]
       }
+      order_status_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          from_status: Database["public"]["Enums"]["order_status"] | null
+          id: number
+          order_id: string
+          to_status: Database["public"]["Enums"]["order_status"]
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          from_status?: Database["public"]["Enums"]["order_status"] | null
+          id?: never
+          order_id: string
+          to_status: Database["public"]["Enums"]["order_status"]
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          from_status?: Database["public"]["Enums"]["order_status"] | null
+          id?: never
+          order_id?: string
+          to_status?: Database["public"]["Enums"]["order_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_status_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           created_at: string
           customer_name: string
           email: string
+          emails_sent_at: string | null
           id: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           qr_choice: Database["public"]["Enums"]["qr_choice"]
@@ -258,6 +360,7 @@ export type Database = {
           created_at?: string
           customer_name: string
           email: string
+          emails_sent_at?: string | null
           id: string
           payment_method: Database["public"]["Enums"]["payment_method"]
           qr_choice: Database["public"]["Enums"]["qr_choice"]
@@ -275,6 +378,7 @@ export type Database = {
           created_at?: string
           customer_name?: string
           email?: string
+          emails_sent_at?: string | null
           id?: string
           payment_method?: Database["public"]["Enums"]["payment_method"]
           qr_choice?: Database["public"]["Enums"]["qr_choice"]
@@ -313,7 +417,6 @@ export type Database = {
           price: number
           short_description: Json | null
           slug: string
-          stock: number | null
           variations: Json | null
         }
         Insert: {
@@ -338,7 +441,6 @@ export type Database = {
           price: number
           short_description?: Json | null
           slug: string
-          stock?: number | null
           variations?: Json | null
         }
         Update: {
@@ -363,7 +465,6 @@ export type Database = {
           price?: number
           short_description?: Json | null
           slug?: string
-          stock?: number | null
           variations?: Json | null
         }
         Relationships: [
@@ -438,25 +539,45 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_allowlist: { Args: never; Returns: string[] }
       admin_reset_memory_pin: {
         Args: { p_pin: string; p_token: string }
         Returns: undefined
       }
+      check_memory_pin: {
+        Args: { p_pin: string; p_token: string }
+        Returns: {
+          attempts_left: number
+          minutes_left: number
+          status: string
+        }[]
+      }
+      delete_collection_cascade: { Args: { p_id: string }; Returns: string[] }
       get_memory: {
         Args: { p_token: string }
         Returns: {
           created_at: string
-          message: string
           order_id: string
-          photos: string[]
           product_id: string
           product_label: string
-          title: string
           token: string
           updated_at: string
         }[]
       }
       is_admin: { Args: never; Returns: boolean }
+      mint_qr_token: { Args: { p_len?: number }; Returns: string }
+      place_order: {
+        Args: {
+          p_customer_name: string
+          p_email: string
+          p_items: Json
+          p_locale?: string
+          p_payment_method: Database["public"]["Enums"]["payment_method"]
+          p_qr_choice: Database["public"]["Enums"]["qr_choice"]
+          p_shipping_address: Json
+        }
+        Returns: string
+      }
       save_memory: {
         Args: {
           p_message: string
@@ -468,7 +589,28 @@ export type Database = {
           p_title: string
           p_token: string
         }
-        Returns: undefined
+        Returns: {
+          attempts_left: number
+          minutes_left: number
+          status: string
+        }[]
+      }
+      unlock_memory: {
+        Args: { p_pin: string; p_token: string }
+        Returns: {
+          attempts_left: number
+          created_at: string
+          message: string
+          minutes_left: number
+          order_id: string
+          photos: string[]
+          product_id: string
+          product_label: string
+          status: string
+          title: string
+          token: string
+          updated_at: string
+        }[]
       }
       verify_memory_pin: {
         Args: { p_pin: string; p_token: string }

@@ -45,15 +45,9 @@ function randomValues(len: number): Uint8Array {
   return out;
 }
 
-export function generateOrderId(): string {
-  const ts = Date.now().toString(36).toUpperCase();
-  const bytes = randomValues(3);
-  const rnd = Array.from(bytes, (b) => b.toString(36).toUpperCase())
-    .join("")
-    .slice(0, 4)
-    .padEnd(4, "0");
-  return `HK-${ts}-${rnd}`;
-}
+// NOTE: `generateOrderId` used to live here. Order ids are now minted by
+// `place_order` in the database, along with the QR tokens, so the browser never
+// chooses a security-relevant identifier (H10).
 
 /**
  * URL-safe slug from text: lowercase, runs of non-alphanumerics collapse to a
@@ -71,22 +65,87 @@ export function slugify(input: string): string {
     .slice(0, 60);
 }
 
+/**
+ * Short random string over an ambiguity-free alphabet (no 0/o/1/l/i), used for
+ * unique slug suffixes. QR tokens themselves are minted by the database (H10).
+ *
+ * Uses rejection sampling rather than `byte % 31`: 256 is not divisible by 31,
+ * so a plain modulo over-represents the first eight characters of the alphabet
+ * (L8). 248 = 31 × 8, so bytes 248-255 are discarded and redrawn.
+ */
 export function generateToken(len = 8): string {
-  // Ambiguity-free alphabet (no 0/o/1/l/i) for human-readable QR tokens.
-  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
-  const bytes = randomValues(len);
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789"; // 31 chars
+  const limit = 248; // largest multiple of 31 that fits in a byte
   let out = "";
-  for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length];
+  while (out.length < len) {
+    // Over-draw a little so a run of rejections rarely needs a second batch.
+    for (const b of randomValues(len - out.length + 4)) {
+      if (b < limit) out += chars[b % chars.length];
+      if (out.length === len) break;
+    }
+  }
   return out;
 }
 
-/** Default WhatsApp number (digits only, international format, no leading +). */
-export const DEFAULT_WHATSAPP = "971500000000";
+/**
+ * Minimum length for a NEW password (signup, reset). These accounts hold order
+ * history, home addresses, phone numbers and family photographs, so the bare
+ * Supabase default of 6 was too low (M20).
+ *
+ * Sign-in deliberately keeps the old minimum: existing accounts may still have
+ * a 6-character password, and locking them out of their own data is worse than
+ * the weak password. They are upgraded on their next reset.
+ *
+ * This is the client-side half. Raise Supabase's own minimum and enable its
+ * HaveIBeenPwned check in Dashboard → Authentication → Policies — the server is
+ * the only place the rule is actually enforced.
+ */
+/**
+ * Max units of one product per order. Must stay in sync with the
+ * `v_qty > 50` check in `place_order` — the server rejects anything above this
+ * with 'Bad quantity', which checkout maps to a specific message.
+ */
+export const MAX_QTY_PER_ITEM = 50;
 
-/** Strip non-digits from a phone string and build a wa.me deep link. */
-export function whatsappUrl(phone?: string, message?: string): string {
-  const digits =
-    (phone || DEFAULT_WHATSAPP).replace(/\D/g, "") || DEFAULT_WHATSAPP;
+export const MIN_PASSWORD_NEW = 8;
+export const MIN_PASSWORD_SIGNIN = 6;
+
+/**
+ * Validate a post-auth redirect target, falling back to `/`.
+ *
+ * Only same-origin absolute paths are allowed. Rejected:
+ *   - "//evil.example"  protocol-relative → another origin
+ *   - "/\evil.example"  browsers normalise the backslash and treat it the same
+ *   - "https://…"       absolute URL
+ *   - anything relative, which could resolve unpredictably
+ *
+ * Shared by AuthForm, GoogleSignInButton and the OAuth callback route so the
+ * three cannot drift — the callback route previously did no validation at all
+ * beyond prefixing the origin (M19).
+ */
+export function safeRedirectPath(value: string | null | undefined): string {
+  if (!value) return "/";
+  if (!value.startsWith("/")) return "/";
+  if (value.startsWith("//") || value.startsWith("/\\")) return "/";
+  return value;
+}
+
+/**
+ * Strip non-digits from a phone string and build a wa.me deep link, or return
+ * `null` when no usable number is configured.
+ *
+ * This deliberately has NO placeholder fallback. It used to default to
+ * "971500000000", which meant the floating WhatsApp button — the most-used
+ * contact route on a mobile jewellery site — silently pointed at a fake number
+ * on every page, and kept doing so even at call sites that correctly read the
+ * admin setting. Returning null forces callers to hide the affordance instead
+ * of offering the customer a dead link.
+ */
+export function whatsappUrl(phone?: string, message?: string): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  // A UAE mobile is 12 digits with the country code (971 5X XXX XXXX). Anything
+  // shorter than a plausible international number is treated as unconfigured.
+  if (digits.length < 8) return null;
   const base = `https://wa.me/${digits}`;
   return message ? `${base}?text=${encodeURIComponent(message)}` : base;
 }

@@ -29,6 +29,8 @@ import {
   PlaceholderJewel,
   kindFromCategory,
 } from "@/components/ui/PlaceholderJewel";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
+import { PinDialog } from "@/components/admin/PinDialog";
 import { formatDate, cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -75,13 +77,13 @@ export default function AdminQrPage() {
     void reloadMemories();
   }, []);
 
-  const handleResetPin = async (token: string) => {
-    const newPin = window.prompt(t("admin_qr_reset_pin_prompt"), "");
-    if (!newPin) return;
-    if (!/^\d{4}$/.test(newPin)) {
-      toast.error(locale === "ar" ? "PIN غير صالح" : "Invalid PIN");
-      return;
-    }
+  // Token whose PIN is being reset (null = dialog closed). Replaces
+  // window.prompt, which rendered the PIN in plain text (M14).
+  const [pinToken, setPinToken] = useState<string | null>(null);
+  const [pinBusy, setPinBusy] = useState(false);
+
+  const handleResetPin = async (token: string, newPin: string) => {
+    setPinBusy(true);
     try {
       // Always go through the dedicated reset RPC: it re-hashes the PIN AND
       // clears the failed-attempt lockout. Branching on the cached `memories`
@@ -107,8 +109,11 @@ export default function AdminQrPage() {
       }
       await reloadMemories();
       toast.success(t("admin_qr_reset_pin_done"));
+      setPinToken(null);
     } catch {
       toast.error(locale === "ar" ? "تعذّر التحديث" : "Could not update");
+    } finally {
+      setPinBusy(false);
     }
   };
 
@@ -126,8 +131,14 @@ export default function AdminQrPage() {
 
   const [cleaning, setCleaning] = useState(false);
 
+  // Confirmed via <ConfirmDialog> rather than confirm() (M14).
+  const [confirmClean, setConfirmClean] = useState(false);
+  const [pendingDeleteToken, setPendingDeleteToken] = useState<string | null>(
+    null,
+  );
+  const [deletingMemory, setDeletingMemory] = useState(false);
+
   const handleCleanOrphans = async () => {
-    if (!confirm(t("admin_qr_clean_orphans_confirm"))) return;
     setCleaning(true);
     try {
       const { removed } = await cleanOrphanMemoryPhotos();
@@ -146,21 +157,31 @@ export default function AdminQrPage() {
       toast.error(locale === "ar" ? "تعذّر التنظيف" : "Could not clean up");
     } finally {
       setCleaning(false);
+      setConfirmClean(false);
     }
   };
 
-  const handleDelete = async (token: string) => {
+  /** Open the delete dialog, or explain that there is nothing to delete. */
+  const askDelete = (token: string) => {
     if (!memories[token]) {
       toast.info(t("admin_qr_no_memory"));
       return;
     }
-    if (!confirm(t("admin_qr_delete_confirm"))) return;
+    setPendingDeleteToken(token);
+  };
+
+  const handleDelete = async () => {
+    if (!pendingDeleteToken) return;
+    setDeletingMemory(true);
     try {
-      await adminDeleteMemory(token);
+      await adminDeleteMemory(pendingDeleteToken);
       await reloadMemories();
       toast.success(locale === "ar" ? "تم الحذف" : "Deleted");
+      setPendingDeleteToken(null);
     } catch {
       toast.error(locale === "ar" ? "تعذّر الحذف" : "Could not delete");
+    } finally {
+      setDeletingMemory(false);
     }
   };
 
@@ -224,7 +245,7 @@ export default function AdminQrPage() {
         </div>
         <div className="inline-flex items-center gap-2">
           <button
-            onClick={() => void handleCleanOrphans()}
+            onClick={() => setConfirmClean(true)}
             disabled={cleaning}
             className="inline-flex items-center gap-2 rounded-md bg-white/5 px-3 py-2 text-sm font-medium text-white/70 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-[#c9a96e] disabled:cursor-wait disabled:opacity-60"
             title={t("admin_qr_clean_orphans")}
@@ -357,7 +378,7 @@ export default function AdminQrPage() {
                         <Eye className="h-4 w-4" />
                       </Link>
                       <button
-                        onClick={() => void handleResetPin(r.token)}
+                        onClick={() => setPinToken(r.token)}
                         className="grid h-8 w-8 place-items-center rounded-md text-amber-300 hover:bg-amber-500/10"
                         aria-label={t("admin_qr_reset_pin")}
                         title={t("admin_qr_reset_pin")}
@@ -365,7 +386,7 @@ export default function AdminQrPage() {
                         <KeyRound className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => void handleDelete(r.token)}
+                        onClick={() => askDelete(r.token)}
                         className="grid h-8 w-8 place-items-center rounded-md text-rose-400 hover:bg-rose-500/10"
                         aria-label={t("admin_qr_delete_memory")}
                         title={t("admin_qr_delete_memory")}
@@ -447,14 +468,14 @@ export default function AdminQrPage() {
                     <Eye className="h-4 w-4" />
                   </Link>
                   <button
-                    onClick={() => void handleResetPin(r.token)}
+                    onClick={() => setPinToken(r.token)}
                     className="grid h-9 w-9 place-items-center rounded-md text-amber-300 ring-1 ring-amber-400/20 hover:bg-amber-500/10"
                     aria-label={t("admin_qr_reset_pin")}
                   >
                     <KeyRound className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => void handleDelete(r.token)}
+                    onClick={() => askDelete(r.token)}
                     className="grid h-9 w-9 place-items-center rounded-md text-rose-400 ring-1 ring-rose-400/20 hover:bg-rose-500/10"
                     aria-label={t("admin_qr_delete_memory")}
                   >
@@ -507,6 +528,36 @@ export default function AdminQrPage() {
           </div>
         </div>
       )}
+
+      <PinDialog
+        open={pinToken !== null}
+        busy={pinBusy}
+        title={t("admin_qr_reset_pin")}
+        message={t("admin_qr_reset_pin_prompt")}
+        onSubmit={(pin) => {
+          if (pinToken) void handleResetPin(pinToken, pin);
+        }}
+        onCancel={() => setPinToken(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmClean}
+        busy={cleaning}
+        title={t("admin_qr_clean_orphans")}
+        message={t("admin_qr_clean_orphans_confirm")}
+        confirmLabel={t("admin_qr_clean_orphans")}
+        onConfirm={() => void handleCleanOrphans()}
+        onCancel={() => setConfirmClean(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingDeleteToken !== null}
+        busy={deletingMemory}
+        title={t("confirm_delete_title")}
+        message={t("admin_qr_delete_confirm")}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setPendingDeleteToken(null)}
+      />
     </>
   );
 }

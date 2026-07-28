@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { safeRedirectPath } from "@/lib/utils";
 import { toast } from "sonner";
 
 type CredentialResponse = { credential: string };
@@ -75,13 +76,7 @@ export function GoogleSignInButton({ ar }: { ar: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Mirror AuthForm: honor ?redirect=/checkout, internal paths only.
-  const redirectParam = searchParams.get("redirect");
-  const dest =
-    redirectParam &&
-    redirectParam.startsWith("/") &&
-    !redirectParam.startsWith("//")
-      ? redirectParam
-      : "/";
+  const dest = safeRedirectPath(searchParams.get("redirect"));
   const containerRef = useRef<HTMLDivElement>(null);
   const rawNonceRef = useRef("");
 

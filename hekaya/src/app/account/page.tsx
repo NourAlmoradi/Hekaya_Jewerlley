@@ -23,6 +23,7 @@ import { useWishlistStore } from "@/stores/wishlist.store";
 import { useCartStore } from "@/stores/cart.store";
 import { useAuth } from "@/lib/supabase/useAuth";
 import { AuthForm } from "@/components/account/AuthForm";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 import { fetchMyMemories, type PublicMemory } from "@/lib/supabase/memories";
 import { useProducts } from "@/lib/useProducts";
@@ -141,24 +142,26 @@ function AccountPageInner() {
     await signOut();
   };
 
+  // Confirmed via <ConfirmDialog>. This is the most destructive action in the
+  // app, and native confirm() is suppressed by some browser policies — in which
+  // case it returns false, so the button appeared to do nothing (M14).
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
   const deleteAccount = async () => {
-    if (
-      !confirm(
-        locale === "ar"
-          ? "سيتم حذف حسابك وكل بياناتك (الطلبات، الذكريات، العناوين) نهائيًا. هل أنت متأكد؟"
-          : "Your account and all of its data (orders, memories, addresses) will be permanently deleted. Are you sure?",
-      )
-    )
-      return;
+    setDeletingAccount(true);
     try {
       const res = await fetch("/api/account/delete", { method: "POST" });
       if (!res.ok) throw new Error("Failed");
       await signOut();
       toast.success(locale === "ar" ? "تم حذف الحساب" : "Account deleted");
+      setConfirmDeleteAccount(false);
     } catch {
       toast.error(
         locale === "ar" ? "تعذّر حذف الحساب" : "Could not delete account",
       );
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -241,7 +244,7 @@ function AccountPageInner() {
             <LogOut className="h-4 w-4" /> {t("logout")}
           </button>
           <button
-            onClick={deleteAccount}
+            onClick={() => setConfirmDeleteAccount(true)}
             className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
           >
             <Trash2 className="h-4 w-4" />
@@ -748,6 +751,20 @@ function AccountPageInner() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteAccount}
+        busy={deletingAccount}
+        title={locale === "ar" ? "حذف الحساب" : "Delete account"}
+        message={
+          locale === "ar"
+            ? "سيتم حذف حسابك وكل بياناتك (الطلبات، الذكريات، العناوين) نهائيًا. لا يمكن التراجع."
+            : "Your account and all of its data — orders, memories, addresses — will be permanently deleted. This cannot be undone."
+        }
+        confirmLabel={locale === "ar" ? "حذف الحساب" : "Delete account"}
+        onConfirm={deleteAccount}
+        onCancel={() => setConfirmDeleteAccount(false)}
+      />
     </div>
   );
 }

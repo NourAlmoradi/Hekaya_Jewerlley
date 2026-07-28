@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { Product } from "@/types";
 import { useT } from "@/lib/useT";
-import { formatPrice, cn } from "@/lib/utils";
+import { formatPrice, cn, MAX_QTY_PER_ITEM } from "@/lib/utils";
 import {
   PlaceholderJewel,
   kindFromCategory,
@@ -196,17 +196,24 @@ export function ProductDetail({ product }: { product: Product }) {
             <p className="label">{t("quantity")}</p>
             <div className="inline-flex items-center rounded border border-[var(--color-border)] bg-white">
               <button
+                disabled={qty <= 1}
                 onClick={() => setQty(Math.max(1, qty - 1))}
-                className="grid h-11 w-11 place-items-center transition hover:bg-[var(--color-bg-secondary)]"
+                className="grid h-11 w-11 place-items-center transition hover:bg-[var(--color-bg-secondary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                aria-label={t("decrease_qty")}
               >
                 <Minus className="h-4 w-4" />
               </button>
               <span className="w-12 text-center text-sm font-semibold">
                 {qty}
               </span>
+              {/* Capped to match place_order's server-side limit. Unbounded,
+                  a customer could set 51, complete the entire checkout flow,
+                  and get only the generic "Could not place the order" (M4). */}
               <button
-                onClick={() => setQty(qty + 1)}
-                className="grid h-11 w-11 place-items-center transition hover:bg-[var(--color-bg-secondary)]"
+                disabled={qty >= MAX_QTY_PER_ITEM}
+                onClick={() => setQty(Math.min(MAX_QTY_PER_ITEM, qty + 1))}
+                className="grid h-11 w-11 place-items-center transition hover:bg-[var(--color-bg-secondary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                aria-label={t("increase_qty")}
               >
                 <Plus className="h-4 w-4" />
               </button>

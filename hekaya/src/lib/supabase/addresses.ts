@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/supabase/types";
 
 /** An address book entry (camelCase app shape). `emirate` holds an EmirateKey. */
 export type Address = {
@@ -55,7 +55,7 @@ function toRow(input: AddressInput) {
 
 /** The signed-in user's address book (RLS scopes it to them). Newest first. */
 export async function fetchAddresses(
-  supabase: SupabaseClient,
+  supabase: Db,
 ): Promise<Address[]> {
   const { data, error } = await supabase
     .from("addresses")
@@ -67,7 +67,7 @@ export async function fetchAddresses(
 
 /** Insert a new address for the given user. */
 export async function createAddress(
-  supabase: SupabaseClient,
+  supabase: Db,
   userId: string,
   input: AddressInput,
 ): Promise<void> {
@@ -79,7 +79,7 @@ export async function createAddress(
 
 /** Update an existing address by id (RLS still applies). */
 export async function updateAddress(
-  supabase: SupabaseClient,
+  supabase: Db,
   id: string,
   input: AddressInput,
 ): Promise<void> {
@@ -92,7 +92,7 @@ export async function updateAddress(
 
 /** Delete an address by id. */
 export async function deleteAddress(
-  supabase: SupabaseClient,
+  supabase: Db,
   id: string,
 ): Promise<void> {
   const { error } = await supabase.from("addresses").delete().eq("id", id);

@@ -1,10 +1,21 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/supabase/types";
 import type { Bilingual, Category, Collection, Product } from "@/types";
 import { slugify, generateToken } from "@/lib/utils";
 
 /**
  * Raw database row shapes (snake_case) for the catalog tables.
- * These mirror the schema in hekaya/supabase/seed.sql.
+ * These mirror the schema in hekaya/supabase/migrations/.
+ *
+ * WHY THE `as unknown as` CASTS BELOW:
+ * `supabase gen types` types every `jsonb` column as `Json` — which is correct,
+ * because Postgres genuinely cannot promise that `name` holds `{ar, en}` rather
+ * than an array or a number. The app enforces that shape on write (productToRow
+ * / collectionToRow), so narrowing on read is a deliberate assertion, not a
+ * papered-over bug. TypeScript requires the `unknown` hop because `Json` and
+ * `Bilingual` do not overlap.
+ *
+ * Everything the generator CAN check — table names, column names, RPC names and
+ * argument names — is now enforced, which is the point of typing the client.
  */
 type CollectionRow = {
   id: string;
@@ -43,7 +54,6 @@ type ProductRow = {
   is_bestseller: boolean;
   is_featured: boolean;
   is_active: boolean;
-  stock: number | null;
   variations: Product["variations"] | null;
   age_range: Bilingual | null;
   material: Bilingual | null;
@@ -95,7 +105,6 @@ export function mapProduct(row: ProductRow): Product {
     isBestseller: row.is_bestseller,
     isFeatured: row.is_featured,
     isActive: row.is_active,
-    stock: row.stock ?? undefined,
     variations: row.variations ?? undefined,
     ageRange: row.age_range ?? undefined,
     material: row.material ?? undefined,
@@ -106,43 +115,43 @@ export function mapProduct(row: ProductRow): Product {
 
 /** Fetch all collections (admin sees inactive too). Sorted by sort_order. */
 export async function fetchCollections(
-  supabase: SupabaseClient,
+  supabase: Db,
 ): Promise<Collection[]> {
   const { data, error } = await supabase
     .from("collections")
     .select("*")
     .order("sort_order", { ascending: true });
   if (error) throw error;
-  return (data as CollectionRow[]).map(mapCollection);
+  return (data as unknown as CollectionRow[]).map(mapCollection);
 }
 
 /** Fetch all categories, sorted by sort_order. */
 export async function fetchCategories(
-  supabase: SupabaseClient,
+  supabase: Db,
 ): Promise<Category[]> {
   const { data, error } = await supabase
     .from("categories")
     .select("*")
     .order("sort_order", { ascending: true });
   if (error) throw error;
-  return (data as CategoryRow[]).map(mapCategory);
+  return (data as unknown as CategoryRow[]).map(mapCategory);
 }
 
 /** Fetch all products, newest first. */
 export async function fetchProducts(
-  supabase: SupabaseClient,
+  supabase: Db,
 ): Promise<Product[]> {
   const { data, error } = await supabase
     .from("products")
     .select("*")
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return (data as ProductRow[]).map(mapProduct);
+  return (data as unknown as ProductRow[]).map(mapProduct);
 }
 
 /** Fetch a single product by slug (used by server metadata). */
 export async function fetchProductBySlug(
-  supabase: SupabaseClient,
+  supabase: Db,
   slug: string,
 ): Promise<Product | null> {
   const { data, error } = await supabase
@@ -151,7 +160,7 @@ export async function fetchProductBySlug(
     .eq("slug", slug)
     .maybeSingle();
   if (error) throw error;
-  return data ? mapProduct(data as ProductRow) : null;
+  return data ? mapProduct(data as unknown as ProductRow) : null;
 }
 
 /**
@@ -160,7 +169,7 @@ export async function fetchProductBySlug(
  * with itself.
  */
 async function uniqueProductSlug(
-  supabase: SupabaseClient,
+  supabase: Db,
   base: string,
   excludeId?: string,
 ): Promise<string> {
@@ -203,7 +212,6 @@ function productToRow(p: Product) {
     is_bestseller: p.isBestseller ?? false,
     is_featured: p.isFeatured ?? false,
     is_active: p.isActive,
-    stock: p.stock ?? null,
     variations: p.variations ?? null,
     age_range: p.ageRange ?? null,
     material: p.material ?? null,
@@ -213,7 +221,7 @@ function productToRow(p: Product) {
 
 /** Insert a brand-new product (the DB mints the uuid id). */
 export async function createProduct(
-  supabase: SupabaseClient,
+  supabase: Db,
   product: Product,
 ): Promise<void> {
   const row = productToRow(product);
@@ -224,7 +232,7 @@ export async function createProduct(
 
 /** Update an existing product by id. */
 export async function updateProduct(
-  supabase: SupabaseClient,
+  supabase: Db,
   product: Product,
 ): Promise<void> {
   const row = productToRow(product);
@@ -238,7 +246,7 @@ export async function updateProduct(
 
 /** Toggle a product's active flag. */
 export async function setProductActive(
-  supabase: SupabaseClient,
+  supabase: Db,
   id: string,
   isActive: boolean,
 ): Promise<void> {
@@ -271,7 +279,7 @@ function collectionToRow(c: Collection) {
 
 /** Insert a brand-new collection (the DB mints the uuid id). */
 export async function createCollection(
-  supabase: SupabaseClient,
+  supabase: Db,
   collection: Collection,
 ): Promise<void> {
   const { error } = await supabase
@@ -282,7 +290,7 @@ export async function createCollection(
 
 /** Update an existing collection by id. */
 export async function updateCollection(
-  supabase: SupabaseClient,
+  supabase: Db,
   collection: Collection,
 ): Promise<void> {
   const { error } = await supabase

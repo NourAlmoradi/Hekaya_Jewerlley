@@ -2,12 +2,26 @@
 -- MASHAER JEWELLERY — schema upgrade + seed (UUID remap)
 -- Run this ONCE in Supabase → SQL Editor → New query → Run.
 --
--- Safe to re-run: every statement is idempotent (IF NOT EXISTS / ON CONFLICT).
--- It (1) upgrades the OLD schema you already ran with the security fixes
--- (categories table, admin-guard trigger, memory RPCs) and (2) seeds the
--- catalogue. Categories keep their string ids ("cat-rings"); collections &
--- products get real UUIDs, and product → collection links are remapped by
--- the collection `slug` so no hardcoded "p1"/"baby" ids survive.
+-- Safe to re-run: every statement is idempotent (IF NOT EXISTS / ON CONFLICT),
+-- and it NEVER touches your products — see section 4.
+--
+-- What this file is:
+--   * an UPGRADE script for an existing database (functions, triggers, RLS
+--     policies, the categories table, the memory + order RPCs), plus
+--   * a minimal seed of categories and collections so the storefront renders.
+--
+-- What this file is NOT:
+--   * It cannot build a database from nothing. It runs statements like
+--     `alter table public.collections add column …` against tables it never
+--     creates, so on an empty project it fails immediately. The base DDL for
+--     products/orders/memories/profiles/etc. still exists ONLY inside the live
+--     Supabase project. That is finding C4, and it is still open — the fix is
+--     `supabase db dump` into supabase/migrations/0001_baseline.sql, which
+--     needs Docker or pg_dump installed. See supabase/migrations/README.md.
+--   * It does not seed products. Those are yours, managed in Admin → Products.
+--
+-- For an EXISTING database, prefer the numbered files in supabase/migrations/.
+-- Add new changes there, not here.
 -- =====================================================================
 
 begin;
@@ -263,29 +277,44 @@ alter table public.memories
 alter table public.memories
   add column if not exists pin_locked_until timestamptz;
 
--- Verify a PIN server-side (pin_hash never leaves the database).
--- Counts failed attempts and enforces the temporary lockout above.
-create or replace function public.verify_memory_pin(p_token text, p_pin text)
-returns boolean
+-- Verify a PIN server-side (pin_hash never leaves the database), recording the
+-- attempt and enforcing the lockout — WITHOUT raising. Same reasoning as
+-- unlock_memory above: a RAISE rolls back the failed-attempt UPDATE, so the
+-- counter could never accumulate. Returns one status row:
+--   status = 'ok'     → the PIN matched; the counter has been reset
+--   status = 'wrong'  → attempts_left = tries remaining before lockout
+--   status = 'locked' → minutes_left  = minutes until the lock expires
+create or replace function public.check_memory_pin(p_token text, p_pin text)
+returns table (status text, attempts_left int, minutes_left int)
 language plpgsql security definer as $$
 declare
-  v_ok boolean;
   v_locked timestamptz;
+  v_attempts int;
+  v_ok boolean;
+  v_new int;
 begin
-  select pin_locked_until into v_locked
+  select pin_locked_until, failed_pin_attempts
+    into v_locked, v_attempts
   from public.memories where token = p_token;
+
   if not found then
-    return false;
+    return query select 'wrong'::text, 0, 0;
+    return;
   end if;
+
   if v_locked is not null and v_locked > now() then
-    raise exception 'Too many wrong attempts — try again later';
+    return query select 'locked'::text, 0,
+      greatest(1, ceil(extract(epoch from (v_locked - now())) / 60))::int;
+    return;
   end if;
+
   -- Lock window has passed: clear the stale counter so the user gets a fresh
   -- set of 5 attempts instead of being re-locked on the very next miss.
-  if v_locked is not null and v_locked <= now() then
+  if v_locked is not null then
     update public.memories
       set failed_pin_attempts = 0, pin_locked_until = null
       where token = p_token;
+    v_attempts := 0;
   end if;
 
   select pin_hash = crypt(p_pin, pin_hash) into v_ok
@@ -295,24 +324,48 @@ begin
     update public.memories
       set failed_pin_attempts = 0, pin_locked_until = null
       where token = p_token;
+    return query select 'ok'::text, 0, 0;
   else
+    v_new := coalesce(v_attempts, 0) + 1;
     update public.memories
-      set failed_pin_attempts = failed_pin_attempts + 1,
-          pin_locked_until = case when failed_pin_attempts + 1 >= 5
+      set failed_pin_attempts = v_new,
+          pin_locked_until = case when v_new >= 5
                                   then now() + interval '15 minutes' end
       where token = p_token;
+    if v_new >= 5 then
+      return query select 'locked'::text, 0, 15;
+    else
+      return query select 'wrong'::text, (5 - v_new), 0;
+    end if;
   end if;
-  return v_ok;
+end $$;
+
+-- Boolean wrapper kept for compatibility. No longer raises on the locked
+-- branch (which used to roll back its own counter-clearing update).
+create or replace function public.verify_memory_pin(p_token text, p_pin text)
+returns boolean
+language plpgsql security definer as $$
+declare
+  v_status text;
+begin
+  select c.status into v_status
+  from public.check_memory_pin(p_token, p_pin) c;
+  return v_status = 'ok';
 end $$;
 
 -- Create/update a memory. The QR token is the capability: anyone holding a
 -- token printed on a real order card can do the FIRST setup (and sets a PIN);
 -- later edits require that PIN (admins bypass). Hashing stays server-side.
+-- Returns a status row rather than raising on a wrong/locked PIN — same
+-- transaction-rollback reasoning as unlock_memory. The DROP is required because
+-- the return type changed from void.
+drop function if exists public.save_memory(text, text, uuid, text, text, text, text, text[]);
+
 create or replace function public.save_memory(
   p_token text, p_order_id text, p_product_id uuid, p_product_label text,
   p_pin text, p_title text, p_message text, p_photos text[]
 )
-returns void
+returns table (status text, attempts_left int, minutes_left int)
 language plpgsql security definer as $$
 declare
   v_exists boolean;
@@ -320,6 +373,7 @@ declare
   v_idx int;
   v_prod_text text;
   v_label text;
+  v_check record;
 begin
   select exists(select 1 from public.memories where token = p_token)
     into v_exists;
@@ -327,7 +381,7 @@ begin
   if v_exists then
     -- Editing an existing memory requires the correct PIN, UNLESS the caller is
     -- the order owner or an admin (they manage their own keepsakes freely). For
-    -- everyone else (a public token holder) verify_memory_pin() also enforces
+    -- everyone else (a public token holder) check_memory_pin() also enforces
     -- the failed-attempt lockout.
     if not (
       public.is_admin() or exists (
@@ -336,8 +390,15 @@ begin
         where m.token = p_token and o.user_id = auth.uid()
       )
     ) then
-      if not public.verify_memory_pin(p_token, coalesce(p_pin, '')) then
-        raise exception 'Wrong PIN';
+      select * into v_check
+      from public.check_memory_pin(p_token, coalesce(p_pin, ''));
+
+      -- Return the failure as DATA. Raising here would roll back the
+      -- failed-attempt increment check_memory_pin just wrote — which is exactly
+      -- how the lockout was defeated on this path.
+      if v_check.status <> 'ok' then
+        return query select v_check.status, v_check.attempts_left, v_check.minutes_left;
+        return;
       end if;
     end if;
     update public.memories set
@@ -386,6 +447,8 @@ begin
       coalesce(p_title, ''), coalesce(p_message, ''), coalesce(p_photos, '{}')
     );
   end if;
+
+  return query select 'ok'::text, 0, 0;
 end $$;
 
 -- Admins can delete any memory (cleaves no orphaned data behind).
@@ -414,22 +477,62 @@ begin
   end if;
 end $$;
 
--- Place an order atomically. SECURITY: the client only sends the cart lines
--- and the QR token plan — every price is validated against the live catalog,
--- subtotal/shipping/total are recomputed server-side, and the status is
--- forced to 'pending' (no payment is captured yet). Order + items are
--- inserted in ONE transaction so a failure can never leave a half-order.
+-- Place an order atomically. SECURITY: the client sends ONLY the cart lines,
+-- the address and the QR choice. Every price is validated against the live
+-- catalog, subtotal/shipping/total are recomputed server-side, the status is
+-- forced to 'pending' (no payment is captured yet), and the order id plus every
+-- QR token are MINTED HERE — the browser never chooses a security-relevant
+-- identifier (H10). Order + items are inserted in ONE transaction so a failure
+-- can never leave a half-order.
+--
+-- Drop the old client-trusting signature first: Postgres OVERLOADS on argument
+-- list, so without this an upgraded database would keep both versions and the
+-- insecure one would stay callable.
+drop function if exists public.place_order(
+  text, text, text, jsonb, qr_choice, text[], text[], text[], jsonb, payment_method
+);
+
+-- ---------------------------------------------------------------------
+-- mint_qr_token — cryptographically random, ambiguity-free QR token.
+--
+-- Alphabet matches generateToken() in src/lib/utils.ts: no 0/o/1/l/i, because
+-- these get read off a printed card by hand.
+--
+-- Uses REJECTION SAMPLING rather than `byte % 31`. 256 is not divisible by 31,
+-- so a plain modulo over-represents the first eight characters (this is finding
+-- L8, which the client-side generator still has). 248 = 31 * 8, so any byte
+-- from 248-255 is discarded and redrawn.
+-- ---------------------------------------------------------------------
+create or replace function public.mint_qr_token(p_len int default 8)
+returns text
+language plpgsql volatile as $$
+declare
+  v_chars constant text := 'abcdefghjkmnpqrstuvwxyz23456789';  -- 31 chars
+  v_out text := '';
+  v_byte int;
+begin
+  while char_length(v_out) < p_len loop
+    v_byte := get_byte(gen_random_bytes(1), 0);
+    -- Discard the biased tail so every character is equally likely.
+    if v_byte < 248 then
+      v_out := v_out || substr(v_chars, (v_byte % 31) + 1, 1);
+    end if;
+  end loop;
+  return v_out;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- place_order — the client now sends only the cart, the address, the QR choice
+-- and its display locale. Ids and tokens are minted here.
+-- ---------------------------------------------------------------------
 create or replace function public.place_order(
-  p_id text,
   p_customer_name text,
   p_email text,
   p_items jsonb,                -- [{product_id,name,qty,price,variation_label}]
   p_qr_choice qr_choice,
-  p_qr_tokens text[],
-  p_qr_token_labels text[],
-  p_qr_token_product_ids text[],
   p_shipping_address jsonb,
-  p_payment_method payment_method
+  p_payment_method payment_method,
+  p_locale text default 'ar'    -- language for the generated token labels
 )
 returns text
 language plpgsql security definer as $$
@@ -442,20 +545,35 @@ declare
   v_subtotal numeric(10,2) := 0;
   v_shipping numeric(10,2);
   v_emirate text;
+  v_rate_key text;
   v_rates jsonb;
+  v_id text;
+  v_tokens text[] := '{}';
+  v_labels text[] := '{}';
+  v_prod_ids text[] := '{}';
+  v_token text;
+  v_locale text := case when p_locale = 'en' then 'en' else 'ar' end;
+  v_base text;
+  v_variation text;
+  v_label text;
+  v_n int;
+  v_tries int;
 begin
   if v_user is null then
     raise exception 'Sign in to place an order';
   end if;
-  if p_id is null or p_id !~ '^HK-[A-Z0-9-]{4,24}$' then
-    raise exception 'Bad order id';
+  if p_customer_name is null or char_length(btrim(p_customer_name)) = 0
+     or char_length(p_customer_name) > 120 then
+    raise exception 'Bad customer name';
+  end if;
+  if p_email is null or char_length(p_email) > 255 then
+    raise exception 'Bad email';
   end if;
   if p_items is null or jsonb_array_length(p_items) = 0 then
     raise exception 'Order has no items';
   end if;
-  if array_length(p_qr_tokens, 1) is distinct from array_length(p_qr_token_labels, 1)
-     or array_length(p_qr_tokens, 1) is distinct from array_length(p_qr_token_product_ids, 1) then
-    raise exception 'QR token arrays must align';
+  if jsonb_array_length(p_items) > 50 then
+    raise exception 'Too many line items';
   end if;
 
   -- Validate every line against the catalog: the product must exist and be
@@ -485,17 +603,15 @@ begin
     v_subtotal := v_subtotal + v_price * v_qty;
   end loop;
 
-  -- Shipping is read from admin_settings (emirate label may be AR or EN);
-  -- defaults below keep checkout working even if the row was never edited.
+  -- --------------------------------------------------------------
+  -- Shipping (see migration 0005 for the unknown-emirate reasoning)
+  -- --------------------------------------------------------------
   select coalesce(data->'shipping', '{}'::jsonb) into v_rates
   from public.admin_settings where id = 1;
   v_rates := '{"dubai":0,"abuDhabi":15,"sharjah":10,"ajman":20,"ummAlQuwain":25,"rasAlKhaimah":25,"fujairah":25}'::jsonb
              || coalesce(v_rates, '{}'::jsonb);
-  -- Match the canonical key (checkout now stores e.g. 'dubai', 'abuDhabi') and
-  -- legacy AR/EN labels. v_emirate is lowercased, so camelCase keys collapse to
-  -- 'abudhabi', 'ummalquwain', 'rasalkhaimah'.
   v_emirate := lower(coalesce(p_shipping_address->>'emirate', ''));
-  v_shipping := coalesce((v_rates->>(
+  v_rate_key :=
     case
       when v_emirate like '%dubai%'          or v_emirate like '%دبي%'          then 'dubai'
       when v_emirate like '%abudhabi%'       or v_emirate like '%abu dhabi%'
@@ -507,24 +623,78 @@ begin
       when v_emirate like '%rasalkhaimah%'   or v_emirate like '%ras al khaimah%'
         or v_emirate like '%رأس الخيمة%'                                        then 'rasAlKhaimah'
       when v_emirate like '%fujairah%'       or v_emirate like '%الفجيرة%'      then 'fujairah'
-      else 'dubai'
-    end))::numeric, 0);
-  -- Never let a mis-configured negative rate reduce the order total.
-  v_shipping := greatest(v_shipping, 0);
+      else null
+    end;
+  if v_rate_key is null then
+    raise exception 'Unknown emirate: %', coalesce(p_shipping_address->>'emirate', '(missing)');
+  end if;
+  v_shipping := greatest(coalesce((v_rates->>v_rate_key)::numeric, 0), 0);
+
+  -- --------------------------------------------------------------
+  -- Mint the order id. Retry on the (vanishingly unlikely) collision
+  -- instead of surfacing a primary-key violation to the customer.
+  -- --------------------------------------------------------------
+  v_tries := 0;
+  loop
+    v_id := 'HK-' || upper(substr(encode(gen_random_bytes(6), 'hex'), 1, 8));
+    exit when not exists (select 1 from public.orders o where o.id = v_id);
+    v_tries := v_tries + 1;
+    if v_tries > 10 then
+      raise exception 'Could not allocate an order id';
+    end if;
+  end loop;
+
+  -- --------------------------------------------------------------
+  -- Mint QR tokens from the VALIDATED line items — never from client input.
+  -- per_order → exactly one token for the whole order.
+  -- per_piece → exactly one token per unit purchased.
+  -- --------------------------------------------------------------
+  if p_qr_choice = 'per_order' then
+    v_tokens   := array[public.mint_qr_token()];
+    v_labels   := array[case when v_locale = 'en' then 'All Items' else 'جميع المنتجات' end];
+    v_prod_ids := array['all'];
+  else
+    for v_item in select * from jsonb_array_elements(p_items) loop
+      v_qty  := (v_item->>'qty')::int;
+      v_base := coalesce(v_item->'name'->>v_locale, v_item->'name'->>'en', '');
+      v_variation := v_item->'variation_label'->>v_locale;
+
+      for v_n in 1..v_qty loop
+        -- Reject a duplicate against live orders and existing memories.
+        loop
+          v_token := public.mint_qr_token();
+          exit when not exists (
+            select 1 from public.orders o where v_token = any(o.qr_tokens)
+          ) and not exists (
+            select 1 from public.memories m where m.token = v_token
+          ) and not (v_token = any(v_tokens))
+          -- "demo" is a reserved token: /memory/demo renders a fixed showcase
+          -- page, so a real memory must never be able to claim it (L9).
+          and v_token <> 'demo';
+        end loop;
+
+        v_label := v_base
+                || case when v_variation is not null then ' · ' || v_variation else '' end
+                || case when v_qty > 1 then ' #' || v_n else '' end;
+
+        v_tokens   := v_tokens   || v_token;
+        v_labels   := v_labels   || v_label;
+        v_prod_ids := v_prod_ids || (v_item->>'product_id');
+      end loop;
+    end loop;
+  end if;
 
   insert into public.orders
     (id, user_id, customer_name, email, subtotal, shipping, total, status,
      qr_choice, qr_tokens, qr_token_labels, qr_token_product_ids,
      shipping_address, payment_method)
   values
-    (p_id, v_user, p_customer_name, p_email, v_subtotal, v_shipping,
+    (v_id, v_user, btrim(p_customer_name), p_email, v_subtotal, v_shipping,
      v_subtotal + v_shipping, 'pending', p_qr_choice,
-     coalesce(p_qr_tokens, '{}'), coalesce(p_qr_token_labels, '{}'),
-     coalesce(p_qr_token_product_ids, '{}'), p_shipping_address,
-     p_payment_method);
+     v_tokens, v_labels, v_prod_ids, p_shipping_address, p_payment_method);
 
   insert into public.order_items (order_id, product_id, name, qty, price, variation_label)
-  select p_id,
+  select v_id,
          (i->>'product_id')::uuid,
          i->'name',
          (i->>'qty')::int,
@@ -532,7 +702,7 @@ begin
          nullif(i->'variation_label', 'null'::jsonb)
   from jsonb_array_elements(p_items) i;
 
-  return p_id;
+  return v_id;
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -614,98 +784,44 @@ on conflict (slug) do update set
   sort_order = excluded.sort_order;
 
 -- ---------------------------------------------------------------------
--- 4. SEED — PRODUCTS (new UUID ids; collection_id remapped via slug)
+-- 4. PRODUCTS — deliberately NOT seeded
+--
+-- This script used to insert 8 demo products (Layan Bracelet, Noor Pendant, …)
+-- with `on conflict (slug) do update set name = …, price = …`. That made
+-- re-running it DESTRUCTIVE: it silently reset the name, description, price,
+-- category, collection and material of any product sharing one of those slugs,
+-- wiping edits made in the admin panel.
+--
+-- Products are real business data. They belong to the shop owner and are
+-- managed in Admin → Products, not checked into source control. A schema script
+-- has no business overwriting them.
+--
+-- The categories and collections above ARE still seeded, because products
+-- reference them and the storefront needs at least one of each to render.
 -- ---------------------------------------------------------------------
-insert into public.products
-  (slug, name, description, price, category_id, collection_id, images,
-   is_qr_eligible, is_active, placeholder_tone, material,
-   available_sizes, available_ages)
-values
-  ('stardust-baby-bracelet',
-   '{"ar":"إسوارة ليان","en":"Layan Stardust Bracelet"}'::jsonb,
-   '{"ar":"إسوارة فاخرة من الذهب عيار 18 للأطفال، مزينة بحبات لؤلؤ طبيعي. تأتي مع بطاقة QR لتوثيق الذكرى الأولى.","en":"Crafted in 18k gold with natural pearl accents — designed for tiny wrists. Comes with a private QR memory card."}'::jsonb,
-   890, 'cat-bracelets', (select id from public.collections where slug = 'baby'),
-   '{}', true, true, '#e8dfcc',
-   '{"ar":"ذهب 18 قيراط · لؤلؤ طبيعي","en":"18k Gold · Natural Pearl"}'::jsonb,
-   '{XS,S,M}', '{newborn,kids}'),
 
-  ('noor-pearl-pendant',
-   '{"ar":"قلادة نور","en":"Noor Pearl Pendant"}'::jsonb,
-   '{"ar":"قلادة من الذهب الوردي مع لؤلؤة طبيعية واحدة. هدية مثالية للحظات التي لا تُنسى.","en":"A single natural pearl on a delicate rose-gold chain — the perfect gift for unforgettable moments."}'::jsonb,
-   1240, 'cat-necklaces', (select id from public.collections where slug = 'celebration'),
-   '{}', true, true, '#f0e3d0',
-   '{"ar":"ذهب وردي 18 قيراط · لؤلؤ","en":"18k Rose Gold · Pearl"}'::jsonb,
-   '{M,L}', '{adults}'),
-
-  ('huda-signet-ring',
-   '{"ar":"خاتم هدى","en":"Huda Signet Ring"}'::jsonb,
-   '{"ar":"خاتم سيجنت من الذهب الأصفر عيار 18، يمكن نقش الحرف الأول من اسمك عليه.","en":"An 18k yellow-gold signet ring — engrave with your initial for a personal heirloom."}'::jsonb,
-   1690, 'cat-rings', (select id from public.collections where slug = 'heirloom'),
-   '{}', true, true, '#dfd2ba',
-   '{"ar":"ذهب أصفر 18 قيراط","en":"18k Yellow Gold"}'::jsonb,
-   '{S,M,L,XL}', '{teens,adults}'),
-
-  ('salma-everyday-hoops',
-   '{"ar":"أقراط سلمى","en":"Salma Everyday Hoops"}'::jsonb,
-   '{"ar":"أقراط حلقات من الذهب الأصفر، رقيقة وأنيقة لارتدائها كل يوم.","en":"Featherlight yellow-gold hoops — designed to be worn every day, with anything."}'::jsonb,
-   540, 'cat-earrings', (select id from public.collections where slug = 'everyday'),
-   '{}', false, true, '#e0d3b8',
-   '{"ar":"ذهب أصفر 18 قيراط","en":"18k Yellow Gold"}'::jsonb,
-   '{M}', '{tweens,teens,adults}'),
-
-  ('amal-name-necklace',
-   '{"ar":"قلادة الاسم","en":"Amal Name Necklace"}'::jsonb,
-   '{"ar":"قلادة بالاسم العربي، مصنوعة يدويًا من الذهب عيار 18. خصصيها بأي اسم تريدين.","en":"Hand-crafted in 18k gold — personalise with any Arabic name to make it yours."}'::jsonb,
-   1350, 'cat-necklaces', (select id from public.collections where slug = 'celebration'),
-   '{}', true, true, '#ecdfc8',
-   '{"ar":"ذهب أصفر 18 قيراط","en":"18k Yellow Gold"}'::jsonb,
-   '{S,M,L}', '{teens,adults}'),
-
-  ('yara-baby-ring',
-   '{"ar":"خاتم يارا","en":"Yara Baby Ring"}'::jsonb,
-   '{"ar":"خاتم صغير جدًا من الذهب الوردي للأطفال، يحمل لمسة من الفخامة الهادئة.","en":"A whisper-light rose-gold ring for tiny fingers — quiet luxury, perfectly sized."}'::jsonb,
-   420, 'cat-baby', (select id from public.collections where slug = 'baby'),
-   '{}', true, true, '#f0e3d0',
-   '{"ar":"ذهب وردي 18 قيراط","en":"18k Rose Gold"}'::jsonb,
-   '{XS}', '{newborn}'),
-
-  ('rana-tennis-bracelet',
-   '{"ar":"إسوارة رنا","en":"Rana Tennis Bracelet"}'::jsonb,
-   '{"ar":"إسوارة تنس فاخرة من الذهب الأبيض مع أحجار زركون شفافة.","en":"A luxurious white-gold tennis bracelet with brilliant crystal stones."}'::jsonb,
-   2890, 'cat-bracelets', (select id from public.collections where slug = 'celebration'),
-   '{}', true, true, '#e8e3d4',
-   '{"ar":"ذهب أبيض 18 قيراط · زركون","en":"18k White Gold · Crystal"}'::jsonb,
-   '{M,L}', '{adults}'),
-
-  ('lulu-pearl-studs',
-   '{"ar":"أقراط لؤلؤ","en":"Lulu Pearl Studs"}'::jsonb,
-   '{"ar":"أقراط بلؤلؤ طبيعي على قاعدة من الذهب الأصفر عيار 18.","en":"Natural pearl studs set in 18k yellow gold — timeless and refined."}'::jsonb,
-   690, 'cat-earrings', (select id from public.collections where slug = 'everyday'),
-   '{}', false, true, '#efe4cf',
-   '{"ar":"ذهب أصفر 18 قيراط · لؤلؤ","en":"18k Yellow Gold · Pearl"}'::jsonb,
-   '{S,M}', '{teens,adults}')
-on conflict (slug) do update set
-  name = excluded.name, description = excluded.description,
-  price = excluded.price, category_id = excluded.category_id,
-  collection_id = excluded.collection_id,
-  is_qr_eligible = excluded.is_qr_eligible, is_active = excluded.is_active,
-  placeholder_tone = excluded.placeholder_tone, material = excluded.material,
-  available_sizes = excluded.available_sizes,
-  available_ages = excluded.available_ages;
 
 -- ---------------------------------------------------------------------
 -- 5. SEED — admin settings single row
 -- ---------------------------------------------------------------------
--- Seed real defaults (store info + shipping rates) so checkout's server-side
--- shipping calculation always has rates. Existing edits are NOT overwritten:
--- the update only fires while the row still holds the empty placeholder.
+-- Seed the shipping rates so checkout's server-side calculation always has
+-- them. Existing edits are NOT overwritten: the update only fires while the row
+-- still holds the empty placeholder.
+--
+-- Contact fields are seeded EMPTY on purpose. They used to hold sample values
+-- ("hello@mashaerjewellery.com", "+971 50 000 0000"), which is how placeholder
+-- contact details reached real customers — the floating WhatsApp button pointed
+-- at a fake number on every page. The storefront now hides any contact channel
+-- whose value is blank, so the owner must set these in Admin → Settings before
+-- they appear. See migration 0002.
 insert into public.admin_settings (id, data) values (1, '{
   "store": {
-    "email": "hello@mashaerjewellery.com",
-    "phone": "+971 50 000 0000",
-    "whatsapp": "+971 50 000 0000",
-    "instagram": "@mashaerjewellery",
-    "facebook": "mashaerjewellery"
+    "email": "",
+    "phone": "",
+    "whatsapp": "",
+    "instagram": "",
+    "facebook": "",
+    "address": ""
   },
   "shipping": {
     "dubai": 0, "abuDhabi": 15, "sharjah": 10, "ajman": 20,

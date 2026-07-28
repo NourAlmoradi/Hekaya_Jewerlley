@@ -45,7 +45,10 @@ export type Product = {
   isBestseller?: boolean;
   isFeatured?: boolean;
   isActive: boolean;
-  stock?: number;
+  // NOTE: there is deliberately no `stock` field. Every piece is made to order,
+  // so there is no inventory to track. A `stock` column previously existed here
+  // and in the database but no admin screen could edit it and no checkout path
+  // enforced it — see migration 0003.
   variations?: ProductVariation[];
   createdAt?: string;
   // Visual placeholder colour for shimmer cards (no real images yet)
@@ -76,6 +79,35 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 
+/** Every status, in lifecycle order. Iterate this rather than hardcoding a
+ *  subset — the admin dashboard chart used to omit `paid` and `cancelled`, so
+ *  paid orders silently vanished from it (M3). */
+export const ORDER_STATUSES: readonly OrderStatus[] = [
+  "pending",
+  "paid",
+  "processing",
+  "shipped",
+  "delivered",
+  "cancelled",
+] as const;
+
+/**
+ * Which statuses an order may move to from its current one.
+ *
+ * Mirrors the `guard_order_status` trigger in migration 0009 — the database is
+ * the enforcement point; this map exists so the UI offers only valid options
+ * instead of letting an admin pick a move the server will reject. `delivered`
+ * and `cancelled` are terminal.
+ */
+export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  pending: ["paid", "processing", "cancelled"],
+  paid: ["processing", "shipped", "cancelled"],
+  processing: ["shipped", "cancelled"],
+  shipped: ["delivered", "cancelled"],
+  delivered: [],
+  cancelled: [],
+};
+
 export type OrderItem = {
   productId: string;
   name: Bilingual;
@@ -97,6 +129,8 @@ export type ShippingAddress = {
 
 export type Order = {
   id: string;
+  /** Owning account. Absent only on legacy rows placed before it was required. */
+  userId?: string;
   customerName: string;
   email: string;
   items: OrderItem[];

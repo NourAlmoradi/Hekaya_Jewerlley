@@ -11,6 +11,8 @@ import { fetchMyMemories, type PublicMemory } from "@/lib/supabase/memories";
 import { useProducts } from "@/lib/useProducts";
 import { generateQrDataUrl, memoryUrlFor } from "@/lib/qr";
 import { Eyebrow } from "@/components/ui/Eyebrow";
+import { AuthForm } from "@/components/account/AuthForm";
+import { useAuth } from "@/lib/supabase/useAuth";
 import { formatDate } from "@/lib/utils";
 
 // Brand gold — matches --color-primary in globals.css
@@ -19,11 +21,20 @@ const QR_COLOR = "#C9A96E";
 export default function MyMemoriesPage() {
   const { t, locale, tx } = useT();
   const allProducts = useProducts();
+  const { user, loading: authLoading } = useAuth();
   const qrColor = QR_COLOR;
   const [memories, setMemories] = useState<PublicMemory[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Signed out, RLS returns [] — don't bother asking, and don't let the
+    // result be mistaken for "you have no memories" (M18).
+    if (authLoading) return;
+    if (!user) {
+      setMemories([]);
+      setLoading(false);
+      return;
+    }
     let active = true;
     fetchMyMemories(createClient())
       .then((m) => {
@@ -38,7 +49,7 @@ export default function MyMemoriesPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user, authLoading]);
 
   const entries = useMemo(
     () =>
@@ -48,6 +59,22 @@ export default function MyMemoriesPage() {
       ),
     [memories],
   );
+
+  if (authLoading) {
+    return (
+      <div className="container-h flex min-h-[60vh] items-center justify-center py-20">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--color-primary-dark)] border-t-transparent" />
+      </div>
+    );
+  }
+
+  // Signed out gets the sign-in form, matching account/page.tsx. Previously a
+  // signed-out visitor — including someone whose session had simply expired —
+  // saw "You haven't created any memories yet", indistinguishable from having
+  // none, and could reasonably conclude their keepsakes had been deleted (M18).
+  if (!user) {
+    return <AuthForm />;
+  }
 
   return (
     <div className="container-h py-12 lg:py-16">

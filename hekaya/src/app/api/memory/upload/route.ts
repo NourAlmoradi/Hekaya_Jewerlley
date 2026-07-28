@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { clientIp, rateLimited } from "@/lib/rateLimit";
 
 export const runtime = "nodejs"; // needs Node Buffer + service role
 
@@ -9,20 +10,10 @@ const MAX_BYTES = 5 * 1024 * 1024; // 5 MB after client-side compression
 // little headroom for replace-then-delete flows.
 const MAX_FILES_PER_TOKEN = 6;
 
-// Best-effort per-IP rate limit. In-memory, so it protects per server instance
-// (not globally) — a lightweight guard against someone filling the bucket via a
-// single valid token, not a hard quota.
-const RATE_LIMIT = 20;
-const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-const hits = new Map<string, number[]>();
-
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  recent.push(now);
-  hits.set(ip, recent);
-  return recent.length > RATE_LIMIT;
-}
+// Best-effort per-IP rate limit — see src/lib/rateLimit.ts for the per-instance
+// caveat. A lightweight guard against someone filling the bucket via a single
+// valid token, not a hard quota.
+const RATE_RULE = { limit: 20, windowMs: 10 * 60 * 1000 };
 
 type Body = { token?: string; dataUrl?: string };
 
@@ -34,10 +25,7 @@ type Body = { token?: string; dataUrl?: string };
  * stored under `<token>/<uuid>` so it can be cleaned up with the memory.
  */
 export async function POST(req: Request) {
-  const ip =
-    (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
-    "unknown";
-  if (rateLimited(ip)) {
+  if (rateLimited("memory-upload", clientIp(req), RATE_RULE)) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 

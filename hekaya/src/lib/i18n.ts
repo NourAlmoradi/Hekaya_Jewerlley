@@ -1,4 +1,8 @@
-export type Locale = "ar" | "en";
+// Re-exported from the single source of truth in @/types rather than declared
+// twice (L3). Kept as a named export so the many `from "@/lib/i18n"` imports
+// keep working.
+import type { Locale } from "@/types";
+export type { Locale };
 
 export const translations = {
   // Common
@@ -124,8 +128,6 @@ export const translations = {
   add_to_cart: { ar: "أضف إلى السلة", en: "Add to Cart" },
   added_to_cart: { ar: "تمت الإضافة إلى السلة", en: "Added to cart" },
   buy_now: { ar: "اشترِ الآن", en: "Buy Now" },
-  out_of_stock: { ar: "غير متوفر", en: "Sold Out" },
-  in_stock: { ar: "متوفر", en: "In Stock" },
   qr_eligible: { ar: "مع ذكرى QR", en: "QR Memory Included" },
   size: { ar: "المقاس", en: "Size" },
   material: { ar: "الخامة", en: "Material" },
@@ -267,9 +269,9 @@ export const translations = {
   admin_total_revenue: { ar: "إجمالي الإيرادات", en: "Total Revenue" },
   admin_total_products: { ar: "إجمالي المنتجات", en: "Total Products" },
   admin_active_qr: { ar: "ذكريات QR مفعّلة", en: "Active QR Memories" },
-  admin_new_customers: { ar: "عملاء جدد", en: "New Customers" },
+  // Counts distinct order emails across all time, so "total", not "new".
+  admin_total_customers: { ar: "إجمالي العملاء", en: "Total Customers" },
   admin_recent_orders: { ar: "أحدث الطلبات", en: "Recent Orders" },
-  admin_low_stock: { ar: "منتجات قليلة", en: "Low Stock" },
   admin_orders_by_status: { ar: "الطلبات حسب الحالة", en: "Orders by Status" },
   admin_orders_by_status_sub: {
     ar: "تصنيف الطلبات الحالية",
@@ -338,6 +340,16 @@ export const translations = {
   admin_whatsapp: { ar: "رقم واتساب", en: "WhatsApp Number" },
   admin_instagram: { ar: "حساب إنستغرام", en: "Instagram Handle" },
   admin_facebook: { ar: "حساب فيسبوك", en: "Facebook Handle" },
+  admin_address: { ar: "عنوان المعرض", en: "Showroom Address" },
+  admin_status_updated: { ar: "تم تحديث الحالة", en: "Status updated" },
+  admin_status_update_failed: {
+    ar: "تعذّر تحديث الحالة",
+    en: "Could not update the status",
+  },
+  admin_status_final: {
+    ar: "هذه حالة نهائية",
+    en: "This is a final status",
+  },
   admin_save_store: { ar: "حفظ إعدادات المتجر", en: "Save Store Settings" },
 
   admin_shipping_rates: {
@@ -364,6 +376,38 @@ export const translations = {
   product_status: { ar: "الحالة", en: "Status" },
   edit: { ar: "تعديل", en: "Edit" },
   delete: { ar: "حذف", en: "Delete" },
+  cancel: { ar: "إلغاء", en: "Cancel" },
+  save: { ar: "حفظ", en: "Save" },
+  confirm_delete_title: { ar: "تأكيد الحذف", en: "Confirm delete" },
+  // Error / 404 pages (M1)
+  not_found_title: {
+    ar: "لم نتمكن من العثور على هذه الصفحة",
+    en: "This page couldn't be found",
+  },
+  not_found_body: {
+    ar: "ربما تم نقل الصفحة أو لم تعد موجودة.",
+    en: "The page you're looking for may have moved or no longer exists.",
+  },
+  error_eyebrow: { ar: "حدث خطأ ما", en: "Something went wrong" },
+  error_title: { ar: "واجهنا خطأً غير متوقع", en: "We hit an unexpected error" },
+  error_body: {
+    ar: "نعتذر عن الانقطاع. يمكنك المحاولة مرة أخرى أو العودة إلى الصفحة الرئيسية.",
+    en: "Sorry for the interruption. You can try again, or head back to the homepage.",
+  },
+  try_again: { ar: "حاول مرة أخرى", en: "Try again" },
+  // Cart stepper aria-labels — these were untranslated English, which matters
+  // for Arabic screen-reader users (M6/M17).
+  decrease_qty: { ar: "تقليل الكمية", en: "Decrease quantity" },
+  increase_qty: { ar: "زيادة الكمية", en: "Increase quantity" },
+  copy: { ar: "نسخ", en: "Copy" },
+  copied: { ar: "تم النسخ", en: "Copied" },
+  copy_failed: { ar: "تعذّر النسخ", en: "Could not copy" },
+  back_to_home: { ar: "العودة للرئيسية", en: "Back to home" },
+  shop_jewellery: { ar: "تسوّقي المجوهرات", en: "Shop jewellery" },
+  admin_pin_must_be_4: {
+    ar: "يجب أن يتكون الرمز من ٤ أرقام",
+    en: "The PIN must be exactly 4 digits",
+  },
   active: { ar: "نشط", en: "Active" },
   inactive: { ar: "غير نشط", en: "Inactive" },
   status: { ar: "الحالة", en: "Status" },
@@ -484,6 +528,46 @@ export const translations = {
   contact_topic_custom: { ar: "طلب خاص", en: "Custom Order" },
   contact_topic_general: { ar: "استفسار عام", en: "General" },
   contact_topic_other: { ar: "أخرى", en: "Other" },
+  contact_send_failed: {
+    ar: "تعذّر إرسال رسالتك. جرّبي مرة أخرى أو تواصلي معنا عبر واتساب.",
+    en: "We couldn't send your message. Please try again, or reach us on WhatsApp.",
+  },
+  contact_rate_limited: {
+    ar: "أرسلتِ رسائل كثيرة. انتظري قليلًا ثم حاولي مرة أخرى.",
+    en: "Too many messages sent. Please wait a few minutes and try again.",
+  },
+  newsletter_subscribed: {
+    ar: "تم اشتراكك. شكرًا لكِ!",
+    en: "You're subscribed. Thank you!",
+  },
+  newsletter_already: {
+    ar: "هذا البريد مشترك بالفعل.",
+    en: "You're already subscribed.",
+  },
+  newsletter_failed: {
+    ar: "تعذّر إتمام الاشتراك. حاولي مرة أخرى.",
+    en: "Could not complete the signup. Please try again.",
+  },
+  checkout_unknown_emirate: {
+    ar: "يرجى اختيار الإمارة من القائمة حتى نحسب الشحن بشكل صحيح.",
+    en: "Please pick your emirate from the list so we can calculate shipping.",
+  },
+  checkout_bad_quantity: {
+    ar: "الحد الأقصى ٥٠ قطعة لكل منتج. يرجى تقليل الكمية.",
+    en: "The maximum is 50 units per item. Please reduce the quantity.",
+  },
+  checkout_bad_name: {
+    ar: "يرجى إدخال اسم صحيح (١٢٠ حرفًا كحد أقصى).",
+    en: "Please enter a valid name (120 characters max).",
+  },
+  checkout_failed: {
+    ar: "تعذّر إتمام الطلب، حاول مرة أخرى",
+    en: "Could not place the order, please try again",
+  },
+  checkout_price_changed: {
+    ar: "تغيّرت أسعار بعض المنتجات وحدّثنا سلتك — يرجى المراجعة والمحاولة مجددًا.",
+    en: "Some prices changed and we updated your cart — please review and try again.",
+  },
   contact_whatsapp_title: {
     ar: "تحدّثي معنا على واتساب",
     en: "Chat on WhatsApp",

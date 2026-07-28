@@ -9,6 +9,8 @@ export type AdminStoreInfo = {
   whatsapp: string;
   instagram: string;
   facebook: string;
+  /** Physical showroom address, shown in the footer and on the contact page. */
+  address: string;
 };
 
 export type AdminShipping = {
@@ -30,13 +32,23 @@ export type AdminSettingsState = {
   setShipping: (sh: Partial<AdminShipping>) => Promise<void>;
 };
 
+/**
+ * Contact fields default to EMPTY, not to sample values.
+ *
+ * They used to default to "hello@mashaerjewellery.com" / "+971 50 000 0000",
+ * which is why placeholder contact details reached customers: an unconfigured
+ * shop rendered a plausible-looking but fake email and phone number. Every
+ * consumer now hides the affordance when its value is blank, so a channel
+ * appears only once the owner has actually set it in Admin → Settings.
+ */
 const defaults: Pick<AdminSettingsState, "store" | "shipping"> = {
   store: {
-    email: "hello@mashaerjewellery.com",
-    phone: "+971 50 000 0000",
-    whatsapp: "+971 50 000 0000",
-    instagram: "@mashaerjewellery",
-    facebook: "mashaerjewellery",
+    email: "",
+    phone: "",
+    whatsapp: "",
+    instagram: "",
+    facebook: "",
+    address: "",
   },
   shipping: {
     dubai: 0,

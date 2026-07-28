@@ -1,13 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Mail, Phone, Package } from "lucide-react";
 import { useT } from "@/lib/useT";
 import { useOrders } from "@/lib/useOrders";
+import { createClient } from "@/lib/supabase/client";
+import { fetchProfiles, type Profile } from "@/lib/supabase/profiles";
 import { formatPrice, formatDate, cn } from "@/lib/utils";
 import type { Order } from "@/types";
 
 type Customer = {
+  /** Account id when known; otherwise the lowercased email (legacy rows). */
+  key: string;
   email: string;
   name: string;
   phone: string;
@@ -17,30 +21,69 @@ type Customer = {
   lastOrderAt: string;
   totalSpent: number;
   ordersByStatus: Record<string, number>;
+  /** True when there is a `profiles` row — i.e. a registered account. */
+  registered: boolean;
+  registeredAt: string | null;
 };
 
-function aggregateCustomers(orders: Order[]): Customer[] {
+/**
+ * Build the customer list from registered profiles JOINED with order stats.
+ *
+ * Two fixes over the previous version (M9):
+ *  1. Identity is keyed on `user_id`, not the checkout email. Keying on email
+ *     meant one account that used two addresses at checkout showed up as two
+ *     separate customers.
+ *  2. Registered accounts with no orders yet are included. They were previously
+ *     invisible — and they are precisely the segment worth re-marketing to.
+ *
+ * Orders with no user_id (legacy rows) still fall back to email keying so
+ * nothing disappears from the screen.
+ */
+function aggregateCustomers(orders: Order[], profiles: Profile[]): Customer[] {
   const map = new Map<string, Customer>();
+
+  // Seed with every registered account, so non-buyers appear.
+  for (const p of profiles) {
+    map.set(p.id, {
+      key: p.id,
+      email: "",
+      name: p.fullName || "—",
+      phone: p.phone || "",
+      city: "",
+      emirate: "",
+      orderCount: 0,
+      lastOrderAt: "",
+      totalSpent: 0,
+      ordersByStatus: {},
+      registered: true,
+      registeredAt: p.createdAt,
+    });
+  }
+
   for (const o of orders) {
     const email = (o.email || o.shippingAddress?.email || "").toLowerCase();
-    if (!email) continue;
-    const existing = map.get(email);
+    const key = o.userId || email;
+    if (!key) continue;
     const status = o.status || "pending";
+    const existing = map.get(key);
+
     if (existing) {
       existing.orderCount += 1;
       existing.totalSpent += o.total;
       existing.ordersByStatus[status] =
         (existing.ordersByStatus[status] ?? 0) + 1;
-      if (o.createdAt > existing.lastOrderAt) {
+      // Keep the most-recent contact info as the canonical record.
+      if (!existing.lastOrderAt || o.createdAt > existing.lastOrderAt) {
         existing.lastOrderAt = o.createdAt;
-        // Keep the most-recent contact info as the canonical record
+        existing.email = email || existing.email;
         existing.name = o.customerName || existing.name;
         existing.phone = o.shippingAddress?.phone || existing.phone;
         existing.city = o.shippingAddress?.city || existing.city;
         existing.emirate = o.shippingAddress?.emirate || existing.emirate;
       }
     } else {
-      map.set(email, {
+      map.set(key, {
+        key,
         email,
         name: o.customerName || "—",
         phone: o.shippingAddress?.phone || "",
@@ -50,9 +93,12 @@ function aggregateCustomers(orders: Order[]): Customer[] {
         lastOrderAt: o.createdAt,
         totalSpent: o.total,
         ordersByStatus: { [status]: 1 },
+        registered: false,
+        registeredAt: null,
       });
     }
   }
+
   return Array.from(map.values()).sort((a, b) => b.totalSpent - a.totalSpent);
 }
 
@@ -60,8 +106,20 @@ export default function AdminCustomers() {
   const { locale } = useT();
   const orders = useOrders();
   const [query, setQuery] = useState("");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
 
-  const customers = useMemo(() => aggregateCustomers(orders), [orders]);
+  // RLS returns every profile to admins. Failure is non-fatal: the screen still
+  // renders the order-derived customers, just without registered non-buyers.
+  useEffect(() => {
+    fetchProfiles(createClient())
+      .then(setProfiles)
+      .catch(() => setProfiles([]));
+  }, []);
+
+  const customers = useMemo(
+    () => aggregateCustomers(orders, profiles),
+    [orders, profiles],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,8 +143,8 @@ export default function AdminCustomers() {
         </h1>
         <p className="mt-1 text-sm text-white/50">
           {locale === "ar"
-            ? "مستخرجة تلقائياً من الطلبات (لا توجد قاعدة بيانات بعد)."
-            : "Aggregated automatically from orders (no users database yet)."}
+            ? "الحسابات المسجّلة مع إحصاءات طلباتها."
+            : "Registered accounts, joined with their order history."}
         </p>
       </div>
 
@@ -160,7 +218,7 @@ export default function AdminCustomers() {
               )}
               {filtered.map((c) => (
                 <tr
-                  key={c.email}
+                  key={c.key}
                   className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]"
                 >
                   <td className="px-4 py-4">
@@ -189,7 +247,15 @@ export default function AdminCustomers() {
                     {formatPrice(c.totalSpent, locale)}
                   </td>
                   <td className="px-4 py-4 text-xs text-white/50">
-                    {formatDate(c.lastOrderAt, locale)}
+                    {/* Registered accounts that have never ordered have no
+                        last-order date — show why, not an invalid date. */}
+                    {c.lastOrderAt ? (
+                      formatDate(c.lastOrderAt, locale)
+                    ) : (
+                      <span className="text-white/30">
+                        {locale === "ar" ? "لم يطلب بعد" : "No orders yet"}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/supabase/types";
 
 const PRODUCT_BUCKET = "product-images";
 
@@ -10,7 +10,7 @@ const PRODUCT_BUCKET = "product-images";
  * `prefix` scopes the object (e.g. "collections/") within the same bucket.
  */
 async function uploadImage(
-  supabase: SupabaseClient,
+  supabase: Db,
   blob: Blob,
   prefix = "",
 ): Promise<string> {
@@ -29,7 +29,7 @@ async function uploadImage(
 
 /** Upload a prepared product image; returns its public URL. */
 export function uploadProductImage(
-  supabase: SupabaseClient,
+  supabase: Db,
   blob: Blob,
 ): Promise<string> {
   return uploadImage(supabase, blob);
@@ -41,7 +41,7 @@ export function uploadProductImage(
  * moves them to Storage like products already do.
  */
 export function uploadCollectionImage(
-  supabase: SupabaseClient,
+  supabase: Db,
   blob: Blob,
 ): Promise<string> {
   return uploadImage(supabase, blob, "collections/");
@@ -70,7 +70,7 @@ function parsePublicUrl(
  * whether to await or fire-and-forget.
  */
 export async function deleteImagesByUrl(
-  supabase: SupabaseClient,
+  supabase: Db,
   urls: string[],
 ): Promise<void> {
   const byBucket = new Map<string, string[]>();

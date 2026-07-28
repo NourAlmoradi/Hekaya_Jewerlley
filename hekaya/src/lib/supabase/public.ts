@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
 
 /**
  * Cookie-free Supabase client for PUBLIC, read-only data (catalog, product
@@ -8,7 +9,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
  * error. Use this only for anon-readable data — it carries no user session.
  */
 export const createPublicClient = () =>
-  createSupabaseClient(
+  createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { auth: { persistSession: false } },

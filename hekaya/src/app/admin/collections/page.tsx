@@ -21,6 +21,7 @@ import { useCatalogStore } from "@/stores/catalog.store";
 import { useCollections } from "@/lib/useCollections";
 import { useProducts } from "@/lib/useProducts";
 import { PlaceholderJewel } from "@/components/ui/PlaceholderJewel";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { prepareImage, ImageError } from "@/lib/image";
@@ -37,8 +38,13 @@ export default function AdminCollections() {
   const collections = useCollections({ includeInactive: true });
   const allProducts = useProducts();
   const saveCollection = useCatalogStore((s) => s.saveCollection);
-  const deleteCatalogProduct = useCatalogStore((s) => s.deleteProduct);
-  const deleteCatalogCollection = useCatalogStore((s) => s.deleteCollection);
+  const deleteCollectionCascade = useCatalogStore(
+    (s) => s.deleteCollectionCascade,
+  );
+  // Which collection the confirm dialog is asking about (null = closed).
+  const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmMigrate, setConfirmMigrate] = useState(false);
 
   const [editing, setEditing] = useState<Collection | null>(null);
   const [open, setOpen] = useState(false);
@@ -174,14 +180,6 @@ export default function AdminCollections() {
   const migrateBase64Images = async () => {
     const targets = collections.filter((c) => c.image?.startsWith("data:"));
     if (targets.length === 0) return;
-    if (
-      !confirm(
-        locale === "ar"
-          ? `ترحيل ${targets.length} صورة إلى التخزين؟`
-          : `Migrate ${targets.length} base64 image(s) to Storage?`,
-      )
-    )
-      return;
     setMigrating(true);
     const supabase = createClient();
     let ok = 0;
@@ -200,41 +198,43 @@ export default function AdminCollections() {
       }
     }
     setMigrating(false);
+    setConfirmMigrate(false);
     toast.success(
       locale === "ar" ? `تم ترحيل ${ok} صورة` : `Migrated ${ok} image(s)`,
     );
   };
 
-  const remove = async (c: Collection) => {
-    const linkedIds = allProducts
-      .filter((p) => p.collection === c.id)
-      .map((p) => p.id);
-    const count = linkedIds.length;
-    const msg =
-      count > 0
-        ? locale === "ar"
-          ? `سيتم حذف المجموعة و‏${count} منتج مرتبط بها. هل أنت متأكد؟`
-          : `This will also delete ${count} linked product${count > 1 ? "s" : ""}. Continue?`
-        : locale === "ar"
-          ? "هل أنت متأكد من الحذف؟"
-          : "Are you sure you want to delete?";
-    if (!confirm(msg)) return;
+  /** How many products would go with this collection. */
+  const linkedCount = (c: Collection) =>
+    allProducts.filter((p) => p.collection === c.id).length;
+
+  /**
+   * Delete the collection and everything in it via a single transactional RPC.
+   * This replaced a client-side loop that deleted one product at a time — each
+   * one triggering a full catalogue refetch — and which left the collection
+   * half-emptied with no undo if the browser closed midway (M5).
+   */
+  const confirmRemove = async () => {
+    const c = pendingDelete;
+    if (!c) return;
+    setDeleting(true);
     try {
-      for (const id of linkedIds) await deleteCatalogProduct(id);
-      await deleteCatalogCollection(c.id);
+      const count = await deleteCollectionCascade(c.id);
+      toast.success(
+        count > 0
+          ? locale === "ar"
+            ? `تم حذف المجموعة و‏${count} منتج`
+            : `Deleted collection and ${count} product${count > 1 ? "s" : ""}`
+          : locale === "ar"
+            ? "تم الحذف"
+            : "Deleted",
+      );
+      setPendingDelete(null);
     } catch {
       toast.error(locale === "ar" ? "تعذّر الحذف" : "Could not delete");
-      return;
+    } finally {
+      setDeleting(false);
     }
-    toast.success(
-      count > 0
-        ? locale === "ar"
-          ? `تم حذف المجموعة و‏${count} منتج`
-          : `Deleted collection and ${count} product${count > 1 ? "s" : ""}`
-        : locale === "ar"
-          ? "تم الحذف"
-          : "Deleted",
-    );
   };
 
   const move = async (id: string, dir: -1 | 1) => {
@@ -273,7 +273,7 @@ export default function AdminCollections() {
         <div className="flex flex-wrap items-center gap-2">
           {base64Count > 0 && (
             <button
-              onClick={migrateBase64Images}
+              onClick={() => setConfirmMigrate(true)}
               disabled={migrating}
               className="inline-flex items-center gap-2 rounded-md border border-amber-400/40 bg-amber-400/10 px-4 py-2.5 text-sm font-semibold text-amber-300 transition hover:bg-amber-400/20 disabled:opacity-60"
               title={
@@ -428,7 +428,7 @@ export default function AdminCollections() {
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => remove(c)}
+                      onClick={() => setPendingDelete(c)}
                       className="grid h-8 w-8 place-items-center rounded-md text-rose-400 ring-1 ring-rose-400/20 transition hover:bg-rose-500/10"
                       aria-label={t("delete")}
                     >
@@ -672,6 +672,38 @@ export default function AdminCollections() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        busy={deleting}
+        title={t("confirm_delete_title")}
+        message={
+          pendingDelete && linkedCount(pendingDelete) > 0
+            ? locale === "ar"
+              ? `سيتم حذف المجموعة و‏${linkedCount(pendingDelete)} منتج مرتبط بها نهائيًا. لا يمكن التراجع.`
+              : `This permanently deletes the collection and ${linkedCount(pendingDelete)} linked product${linkedCount(pendingDelete) > 1 ? "s" : ""}. This cannot be undone.`
+            : locale === "ar"
+              ? "سيتم حذف المجموعة نهائيًا. لا يمكن التراجع."
+              : "This permanently deletes the collection. This cannot be undone."
+        }
+        onConfirm={confirmRemove}
+        onCancel={() => setPendingDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmMigrate}
+        busy={migrating}
+        destructive={false}
+        title={locale === "ar" ? "ترحيل الصور" : "Migrate images"}
+        message={
+          locale === "ar"
+            ? `ترحيل ${base64Count} صورة من base64 إلى التخزين؟`
+            : `Migrate ${base64Count} base64 image${base64Count === 1 ? "" : "s"} to Storage?`
+        }
+        confirmLabel={locale === "ar" ? "ترحيل" : "Migrate"}
+        onConfirm={() => void migrateBase64Images()}
+        onCancel={() => setConfirmMigrate(false)}
+      />
     </>
   );
 }

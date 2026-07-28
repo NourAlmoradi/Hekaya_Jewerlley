@@ -6,19 +6,21 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Search, X, Check } from "lucide-react";
 import { useT } from "@/lib/useT";
+import type { TKey } from "@/lib/i18n";
 import { useOrders } from "@/lib/useOrders";
 import { useOrdersStore } from "@/stores/orders.store";
 import { formatDate, formatPrice, cn } from "@/lib/utils";
-import type { Order, OrderStatus } from "@/types";
+import { toast } from "sonner";
+import {
+  ORDER_STATUSES,
+  ORDER_STATUS_TRANSITIONS,
+  type Order,
+  type OrderStatus,
+} from "@/types";
 
-const ALL_STATUSES: OrderStatus[] = [
-  "pending",
-  "paid",
-  "processing",
-  "shipped",
-  "delivered",
-  "cancelled",
-];
+// Single source of truth lives in @/types (and is mirrored by the
+// guard_order_status trigger); this local copy used to drift.
+const ALL_STATUSES = ORDER_STATUSES;
 
 const STATUS_PILL: Record<OrderStatus, string> = {
   pending: "bg-amber-200/15 text-amber-300 ring-amber-300/30",
@@ -34,7 +36,19 @@ type Filter = "all" | OrderStatus;
 export default function AdminOrders() {
   const { t, locale } = useT();
   const all = useOrders();
-  const updateStatus = useOrdersStore((s) => s.setStatus);
+  const setStatus = useOrdersStore((s) => s.setStatus);
+
+  // Awaited, with a toast on failure. This was fire-and-forget: a rejected
+  // write (bad transition, lost permissions, network) produced an unhandled
+  // rejection and no feedback, so the admin believed it had saved (M8).
+  const updateStatus = async (id: string, status: OrderStatus) => {
+    try {
+      await setStatus(id, status);
+      toast.success(t("admin_status_updated"));
+    } catch {
+      toast.error(t("admin_status_update_failed"));
+    }
+  };
   const [selected, setSelected] = useState<Order | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -155,7 +169,7 @@ export default function AdminOrders() {
                           setOpenDropdown(openDropdown === o.id ? null : o.id)
                         }
                         onChange={(s) => {
-                          updateStatus(o.id, s);
+                          void updateStatus(o.id, s);
                           setOpenDropdown(null);
                         }}
                         t={t}
@@ -237,7 +251,7 @@ export default function AdminOrders() {
                       setOpenDropdown(openDropdown === o.id ? null : o.id)
                     }
                     onChange={(s) => {
-                      updateStatus(o.id, s);
+                      void updateStatus(o.id, s);
                       setOpenDropdown(null);
                     }}
                     t={t}
@@ -300,7 +314,7 @@ export default function AdminOrders() {
                 />
                 <FieldDark
                   label={t("status")}
-                  value={t(`status_${selected.status}` as never)}
+                  value={t(`status_${selected.status}` as TKey)}
                 />
               </div>
 
@@ -372,7 +386,9 @@ function StatusPill({
   open: boolean;
   onToggle: () => void;
   onChange: (s: OrderStatus) => void;
-  t: (k: never) => string;
+  // Typed with the real key union rather than `never` — the old signature made
+  // every call site need an `as never` cast and rejected genuine keys.
+  t: (k: TKey) => string;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(
@@ -416,7 +432,7 @@ function StatusPill({
           STATUS_PILL[status],
         )}
       >
-        {t(`status_${status}` as never)}
+        {t(`status_${status}` as TKey)}
       </span>
     );
   }
@@ -430,7 +446,7 @@ function StatusPill({
           STATUS_PILL[status],
         )}
       >
-        {t(`status_${status}` as never)}
+        {t(`status_${status}` as TKey)}
         <ChevronDown className="h-3 w-3" />
       </button>
       {open &&
@@ -443,19 +459,31 @@ function StatusPill({
               className="fixed z-[56] w-44 overflow-hidden rounded-md border border-white/10 bg-white text-[#1a1a1a] shadow-xl"
               style={{ top: coords.top, left: coords.left }}
             >
-              {ALL_STATUSES.map((s) => (
+              {/* Only the current status plus its legal next moves. The list
+                  used to offer all six regardless, so `delivered → pending`
+                  was one click away; the server now rejects that outright, so
+                  offering it would only produce an error toast (M8). */}
+              {ALL_STATUSES.filter(
+                (s) => s === status || ORDER_STATUS_TRANSITIONS[status].includes(s),
+              ).map((s) => (
                 <button
                   key={s}
-                  onClick={() => onChange(s)}
+                  onClick={() => s !== status && onChange(s)}
+                  disabled={s === status}
                   className={cn(
                     "flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-[#f5efe2]",
                     s === status && "bg-[#f5efe2] font-semibold",
                   )}
                 >
-                  <span>{t(`status_${s}` as never)}</span>
+                  <span>{t(`status_${s}` as TKey)}</span>
                   {s === status && <Check className="h-4 w-4 text-[#c9a96e]" />}
                 </button>
               ))}
+              {ORDER_STATUS_TRANSITIONS[status].length === 0 && (
+                <p className="px-3 py-2 text-xs text-[#1a1a1a]/50">
+                  {t("admin_status_final")}
+                </p>
+              )}
             </div>
           </>,
           document.body,

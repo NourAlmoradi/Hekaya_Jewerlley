@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/supabase/types";
+import type { Database } from "@/lib/supabase/database.types";
 
 /** A memory with its private content — never includes the PIN hash. */
 export type PublicMemory = {
@@ -62,7 +63,7 @@ function mapMeta(row: MetaRow): MemoryMeta {
 
 /** Does a memory exist for this token? Returns linked product, never content. */
 export async function getMemoryMeta(
-  supabase: SupabaseClient,
+  supabase: Db,
   token: string,
 ): Promise<MemoryMeta | null> {
   const { data, error } = await supabase.rpc("get_memory", { p_token: token });
@@ -95,7 +96,7 @@ type UnlockRow = ContentRow & {
  * Tolerates an older deployment whose `unlock_memory` still RAISES text errors.
  */
 export async function unlockMemory(
-  supabase: SupabaseClient,
+  supabase: Db,
   token: string,
   pin: string,
 ): Promise<UnlockResult> {
@@ -134,7 +135,7 @@ export async function unlockMemory(
  * Returns null when the caller isn't allowed (so the PIN prompt is shown).
  */
 export async function fetchMemoryByToken(
-  supabase: SupabaseClient,
+  supabase: Db,
   token: string,
 ): Promise<PublicMemory | null> {
   const { data } = await supabase
@@ -147,9 +148,27 @@ export async function fetchMemoryByToken(
   return data ? mapContent(data as ContentRow) : null;
 }
 
+/**
+ * The outcome of a save attempt. Like {@link UnlockResult}, `save_memory`
+ * reports a wrong or locked PIN as DATA rather than raising: PostgREST wraps
+ * each RPC in one transaction, so an exception would roll back the
+ * failed-attempt counter written moments earlier and the lockout could never
+ * fire. Genuine transport/unexpected errors still reject.
+ */
+export type SaveResult =
+  | { status: "ok" }
+  | { status: "wrong"; attemptsLeft: number | null }
+  | { status: "locked"; minutesLeft: number };
+
+type SaveRow = {
+  status?: string;
+  attempts_left?: number | null;
+  minutes_left?: number | null;
+};
+
 /** Create or update a memory. PIN is required for first setup and for edits. */
 export async function saveMemory(
-  supabase: SupabaseClient,
+  supabase: Db,
   input: {
     token: string;
     pin?: string;
@@ -160,8 +179,13 @@ export async function saveMemory(
     productId?: string | null;
     productLabel?: string | null;
   },
-): Promise<void> {
-  const { error } = await supabase.rpc("save_memory", {
+): Promise<SaveResult> {
+  // `supabase gen types` emits every function argument as non-nullable, but a
+  // Postgres argument always accepts NULL — and save_memory relies on that:
+  // p_order_id / p_product_id / p_product_label are derived from the order's
+  // token arrays when null, and p_pin is null for an owner/admin edit. The cast
+  // works around the generator, not around a real constraint.
+  const args = {
     p_token: input.token,
     p_order_id: input.orderId ?? null,
     p_product_id: input.productId ?? null,
@@ -170,13 +194,36 @@ export async function saveMemory(
     p_title: input.title,
     p_message: input.message,
     p_photos: input.photos,
-  });
-  if (error) throw error;
+  } as unknown as Database["public"]["Functions"]["save_memory"]["Args"];
+
+  const { data, error } = await supabase.rpc("save_memory", args);
+
+  if (error) {
+    // Legacy deployment: save_memory still raises 'Wrong PIN' and returns void.
+    // Treat it as a wrong PIN with an unknown remaining-attempt count so the UI
+    // keeps working before migration 0006 has been applied.
+    if (/wrong pin/i.test(error.message ?? "")) {
+      return { status: "wrong", attemptsLeft: null };
+    }
+    if (/too many wrong attempts/i.test(error.message ?? "")) {
+      return { status: "locked", minutesLeft: 15 };
+    }
+    throw error; // unknown token, missing PIN, transport failure
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as SaveRow | undefined;
+  // A legacy `returns void` function yields no row — that means it succeeded,
+  // since any failure would have raised.
+  if (!row?.status || row.status === "ok") return { status: "ok" };
+  if (row.status === "locked") {
+    return { status: "locked", minutesLeft: row.minutes_left ?? 15 };
+  }
+  return { status: "wrong", attemptsLeft: row.attempts_left ?? null };
 }
 
 /** All memories belonging to the signed-in user's orders (RLS-scoped). */
 export async function fetchMyMemories(
-  supabase: SupabaseClient,
+  supabase: Db,
 ): Promise<PublicMemory[]> {
   const { data, error } = await supabase
     .from("memories")
@@ -188,16 +235,20 @@ export async function fetchMyMemories(
   return (data as ContentRow[]).map(mapContent);
 }
 
-/** All memories (admin only — RLS returns every row for admins). */
-export async function fetchAllMemories(
-  supabase: SupabaseClient,
-): Promise<PublicMemory[]> {
-  return fetchMyMemories(supabase);
-}
+/**
+ * Alias of {@link fetchMyMemories}, named for the admin call sites.
+ *
+ * There is no separate query: the SELECT policy on `memories` grants admins
+ * every row and everyone else only the memories attached to their own orders,
+ * so the SAME query returns the whole table for an admin. The alias exists
+ * purely so `admin/qr` and `admin/page` read as what they mean; it is not a
+ * different code path, and it confers no extra access on a non-admin (L4).
+ */
+export const fetchAllMemories = fetchMyMemories;
 
 /** Admin-only: reset a memory's PIN without knowing the old one. */
 export async function adminResetMemoryPin(
-  supabase: SupabaseClient,
+  supabase: Db,
   token: string,
   pin: string,
 ): Promise<void> {

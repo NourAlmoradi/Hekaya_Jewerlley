@@ -18,7 +18,7 @@ import { useCartStore, useCartSubtotal } from "@/stores/cart.store";
 import { useOrdersStore } from "@/stores/orders.store";
 import { useAuth } from "@/lib/supabase/useAuth";
 import { useAdminSettings } from "@/stores/adminSettings.store";
-import { formatPrice, generateOrderId, generateToken, cn } from "@/lib/utils";
+import { formatPrice, cn } from "@/lib/utils";
 import type { OrderItem, ShippingAddress } from "@/types";
 import { toast } from "sonner";
 import {
@@ -205,11 +205,14 @@ export default function CheckoutClient() {
           ? "يجب تسجيل الدخول لإتمام الطلب"
           : "Please sign in to place your order",
       );
-      router.push("/account");
+      // Carry the return path. AuthForm, GoogleSignInButton and CartDrawer all
+      // already honour ?redirect — only this call site forgot, so a customer who
+      // reached the final step signed-out was dropped on the homepage and had to
+      // find their cart again (M10).
+      router.push("/account?redirect=/checkout");
       return;
     }
     setPlacing(true);
-    const id = generateOrderId();
     const orderItems: OrderItem[] = items.map((i) => ({
       productId: i.productId,
       name: i.name,
@@ -218,53 +221,23 @@ export default function CheckoutClient() {
       variationLabel: i.variationLabel,
     }));
 
-    let tokens: string[];
-    let tokenLabels: string[];
-    let tokenProductIds: string[];
-
-    if (qrChoice === "per_order") {
-      tokens = [generateToken()];
-      tokenLabels = [locale === "ar" ? "جميع المنتجات" : "All Items"];
-      tokenProductIds = ["all"];
-    } else {
-      tokens = [];
-      tokenLabels = [];
-      tokenProductIds = [];
-      items.forEach((i) => {
-        const baseName = i.name[locale];
-        const variation = i.variationLabel?.[locale];
-        for (let n = 1; n <= i.qty; n++) {
-          tokens.push(generateToken());
-          const label =
-            i.qty > 1
-              ? `${baseName}${variation ? ` · ${variation}` : ""} #${n}`
-              : `${baseName}${variation ? ` · ${variation}` : ""}`;
-          tokenLabels.push(label);
-          tokenProductIds.push(i.productId);
-        }
-      });
-    }
-
+    // The order id and every QR token are minted by `place_order` from the
+    // validated line items — the browser no longer generates security-relevant
+    // identifiers (H10). Totals are recomputed server-side too, so nothing here
+    // is authoritative.
+    let id: string;
     try {
-      const ok = await addOrder({
-        id,
+      const minted = await addOrder({
         customerName: shipping.fullName,
         email: shipping.email,
         items: orderItems,
-        subtotal: sub,
-        shipping: ship,
-        total,
-        // No payment is captured yet (Phase 3) — the server forces 'pending'.
-        status: "pending",
         qrChoice,
-        qrTokens: tokens,
-        qrTokenLabels: tokenLabels,
-        qrTokenProductIds: tokenProductIds,
         shippingAddress: shipping,
         paymentMethod: payment,
-        createdAt: new Date().toISOString(),
+        locale,
       });
-      if (!ok) throw new Error("not-signed-in");
+      if (!minted) throw new Error("not-signed-in");
+      id = minted;
     } catch (e) {
       setPlacing(false);
       const msg = (e as Error)?.message ?? "";
@@ -275,18 +248,29 @@ export default function CheckoutClient() {
         reconcilePrices((id) => allProducts.find((p) => p.id === id)?.price);
         setPriceNotice(true);
         setStep(2);
-        toast.error(
-          locale === "ar"
-            ? "تغيّرت أسعار بعض المنتجات وحدّثنا سلتك — يرجى المراجعة والمحاولة مجددًا."
-            : "Some prices changed and we updated your cart — please review and try again.",
-        );
+        toast.error(t("checkout_price_changed"));
         return;
       }
-      toast.error(
-        locale === "ar"
-          ? "تعذّر إتمام الطلب، حاول مرة أخرى"
-          : "Could not place the order, please try again",
-      );
+      // Every other server-side rejection used to collapse into the generic
+      // "Could not place the order" — so a customer hit the same opaque failure
+      // on every retry with no idea what to change. Map each to the step that
+      // can actually fix it.
+      if (/unknown emirate/i.test(msg)) {
+        setStep(1);
+        toast.error(t("checkout_unknown_emirate"));
+        return;
+      }
+      if (/bad quantity/i.test(msg)) {
+        setStep(2);
+        toast.error(t("checkout_bad_quantity"));
+        return;
+      }
+      if (/bad customer name/i.test(msg)) {
+        setStep(1);
+        toast.error(t("checkout_bad_name"));
+        return;
+      }
+      toast.error(t("checkout_failed"));
       return;
     }
     // Fire-and-forget: send confirmation + memory + admin emails. The route
@@ -573,7 +557,17 @@ export default function CheckoutClient() {
                   </div>
                   <div className="space-y-3">
                     <label className="flex cursor-pointer items-start gap-3">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-[#b8955a]">
+                      {/* Ring colour follows the selection. Both rings were
+                          hardcoded, so this one always looked selected and the
+                          per-piece one below never did (M15). */}
+                      <span
+                        className={cn(
+                          "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
+                          qrChoice === "per_order"
+                            ? "border-[#b8955a]"
+                            : "border-gray-300",
+                        )}
+                      >
                         {qrChoice === "per_order" && (
                           <span className="h-2.5 w-2.5 rounded-full bg-[#b8955a]" />
                         )}
@@ -598,7 +592,14 @@ export default function CheckoutClient() {
                       </div>
                     </label>
                     <label className="flex cursor-pointer items-start gap-3">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-gray-300">
+                      <span
+                        className={cn(
+                          "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
+                          qrChoice === "per_piece"
+                            ? "border-[#b8955a]"
+                            : "border-gray-300",
+                        )}
+                      >
                         {qrChoice === "per_piece" && (
                           <span className="h-2.5 w-2.5 rounded-full bg-[#b8955a]" />
                         )}
@@ -720,8 +721,11 @@ export default function CheckoutClient() {
                     key={`${item.productId}-${item.variationId ?? ""}`}
                     className="flex items-center justify-between gap-2 text-sm"
                   >
+                    {/* `truncate` adds its own ellipsis only when the text
+                        actually overflows. The literal "…" was unconditional,
+                        so short names rendered as "Yara Baby Ring…" (M15). */}
                     <span className="truncate max-w-[160px] text-gray-500">
-                      {item.name[locale]}…
+                      {item.name[locale]}
                     </span>
                     <span className="shrink-0 font-medium text-gray-800">
                       {formatPrice(item.price * item.qty, locale)}

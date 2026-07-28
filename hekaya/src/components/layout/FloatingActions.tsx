@@ -3,10 +3,13 @@
 import { useEffect, useState } from "react";
 import { ArrowUp, MessageCircle } from "lucide-react";
 import { useT } from "@/lib/useT";
-import { cn } from "@/lib/utils";
+import { useAdminSettings } from "@/stores/adminSettings.store";
+import { cn, whatsappUrl } from "@/lib/utils";
 
 export function FloatingActions() {
   const { t } = useT();
+  const whatsapp = useAdminSettings((s) => s.store.whatsapp);
+  const waUrl = whatsappUrl(whatsapp);
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -18,15 +21,19 @@ export function FloatingActions() {
 
   return (
     <div className="fixed bottom-5 z-30 flex flex-col gap-3 ltr:right-5 rtl:left-5">
-      <a
-        href="https://wa.me/971500000000"
-        target="_blank"
-        rel="noreferrer"
-        aria-label={t("whatsapp_us")}
-        className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-whatsapp)] text-white shadow-lg transition hover:scale-105 hover:shadow-xl"
-      >
-        <MessageCircle className="h-5 w-5" />
-      </a>
+      {/* Hidden entirely until a real WhatsApp number is set in Admin → Settings:
+          a dead button is worse than no button on the main mobile contact route. */}
+      {waUrl && (
+        <a
+          href={waUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={t("whatsapp_us")}
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-whatsapp)] text-white shadow-lg transition hover:scale-105 hover:shadow-xl"
+        >
+          <MessageCircle className="h-5 w-5" />
+        </a>
+      )}
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
         aria-label={t("back_to_top")}

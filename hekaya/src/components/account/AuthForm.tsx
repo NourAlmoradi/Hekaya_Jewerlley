@@ -5,6 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { User } from "lucide-react";
 import { useT } from "@/lib/useT";
+import {
+  MIN_PASSWORD_NEW,
+  MIN_PASSWORD_SIGNIN,
+  safeRedirectPath,
+} from "@/lib/utils";
 import { useAuth } from "@/lib/supabase/useAuth";
 import { GoogleSignInButton } from "@/components/account/GoogleSignInButton";
 import { toast } from "sonner";
@@ -20,13 +25,7 @@ export function AuthForm() {
   const searchParams = useSearchParams();
   // Where to land after auth — e.g. /account?redirect=/checkout sends the user
   // straight back to checkout. Only allow internal paths.
-  const redirectParam = searchParams.get("redirect");
-  const dest =
-    redirectParam &&
-    redirectParam.startsWith("/") &&
-    !redirectParam.startsWith("//")
-      ? redirectParam
-      : "/";
+  const dest = safeRedirectPath(searchParams.get("redirect"));
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -138,7 +137,11 @@ export function AuthForm() {
               <input
                 type="password"
                 required
-                minLength={6}
+                // Only NEW passwords must meet the raised minimum — existing
+                // accounts may still have a 6-character one.
+                minLength={
+                  mode === "signup" ? MIN_PASSWORD_NEW : MIN_PASSWORD_SIGNIN
+                }
                 autoComplete={
                   mode === "signin" ? "current-password" : "new-password"
                 }
@@ -146,6 +149,13 @@ export function AuthForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-lg border border-[var(--color-border)] px-3 py-2 outline-none focus:border-[var(--color-primary-dark)]"
               />
+              {mode === "signup" && (
+                <p className="mt-1 text-xs text-[var(--color-ink-faint)]">
+                  {ar
+                    ? `${MIN_PASSWORD_NEW} أحرف على الأقل`
+                    : `At least ${MIN_PASSWORD_NEW} characters`}
+                </p>
+              )}
             </div>
           )}
           {mode === "signin" && (

@@ -37,6 +37,15 @@ type CatalogState = {
   deleteProduct: (id: string) => Promise<void>;
   /** Permanently delete a collection from the database. */
   deleteCollection: (id: string) => Promise<void>;
+  /**
+   * Delete a collection AND every product in it, in one transaction, then
+   * refresh once. Returns the number of products removed.
+   *
+   * Replaces a client-side loop that issued one delete plus one full catalogue
+   * refetch per product, and could leave the collection half-emptied if the
+   * browser closed midway (M5).
+   */
+  deleteCollectionCascade: (id: string) => Promise<number>;
 };
 
 async function fetchAll() {
@@ -114,6 +123,21 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     const { error } = await supabase.from("collections").delete().eq("id", id);
     if (error) throw error;
     await get().refresh();
+  },
+  deleteCollectionCascade: async (id) => {
+    const supabase = createClient();
+    const removed = get().products.filter((p) => p.collection === id).length;
+    // One atomic RPC: either the collection and all its products go, or none do.
+    const { data, error } = await supabase.rpc("delete_collection_cascade", {
+      p_id: id,
+    });
+    if (error) throw error;
+    // Sweep the deleted products' images out of the bucket. Best-effort: an
+    // orphaned file is much cheaper than failing a completed delete.
+    const images = (data as string[] | null) ?? [];
+    if (images.length) void deleteImagesByUrl(supabase, images).catch(() => {});
+    await get().refresh(); // exactly one refetch, not one per product
+    return removed;
   },
 }));
 

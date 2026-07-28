@@ -117,13 +117,21 @@ export default function OrderConfirmation({
               {t("order_number")}
             </span>
             <span className="font-mono text-sm font-bold">{order.id}</span>
+            {/* navigator.clipboard is undefined on non-HTTPS origins and
+                rejects when permission is denied, so the success toast used to
+                be able to lie. Only claim success once the write resolves (L13). */}
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(order.id);
-                toast.success("Copied");
+              onClick={async () => {
+                try {
+                  if (!navigator.clipboard) throw new Error("unavailable");
+                  await navigator.clipboard.writeText(order.id);
+                  toast.success(t("copied"));
+                } catch {
+                  toast.error(t("copy_failed"));
+                }
               }}
               className="text-[var(--color-ink-muted)] hover:text-[var(--color-primary)]"
-              aria-label="Copy"
+              aria-label={t("copy")}
             >
               <Copy className="h-3.5 w-3.5" />
             </button>

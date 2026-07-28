@@ -9,8 +9,12 @@ import type { Locale, Order } from "@/types";
 
 /**
  * Send the three order emails (customer confirmation, memory links, admin
- * alert) for an already-fetched order. Shared by the manual /api/email/order
- * route and the Stripe webhook so the logic lives in exactly one place.
+ * alert) for an already-fetched order.
+ *
+ * Called by /api/email/order, which owns the idempotency guard: it claims
+ * `orders.emails_sent_at` with a conditional UPDATE before calling this, so a
+ * replayed request cannot re-send (H7). Do not call this directly without a
+ * comparable guard.
  *
  * Returns the list of failed sends (empty = all delivered). Never throws on a
  * single send failure; the caller decides what to do with the failures.

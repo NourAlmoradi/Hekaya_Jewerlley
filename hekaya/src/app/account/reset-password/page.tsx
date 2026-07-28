@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { KeyRound } from "lucide-react";
 import { useT } from "@/lib/useT";
+import { MIN_PASSWORD_NEW } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -122,7 +123,7 @@ export default function ResetPasswordPage() {
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={MIN_PASSWORD_NEW}
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -136,7 +137,7 @@ export default function ResetPasswordPage() {
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={MIN_PASSWORD_NEW}
                 autoComplete="new-password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}

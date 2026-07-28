@@ -1,5 +1,11 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Bilingual, Order, OrderItem, ShippingAddress } from "@/types";
+import type { Db } from "@/lib/supabase/types";
+import type {
+  Bilingual,
+  Locale,
+  Order,
+  OrderItem,
+  ShippingAddress,
+} from "@/types";
 
 /**
  * Raw database row shapes (snake_case) for the orders tables.
@@ -15,6 +21,10 @@ type OrderItemRow = {
 
 type OrderRow = {
   id: string;
+  // Nullable in the schema (ON DELETE SET NULL is not used, but legacy rows
+  // predate the cascade FK). Needed so the customers screen can key on the
+  // account rather than on whichever email was typed at checkout (M9).
+  user_id: string | null;
   customer_name: string;
   email: string;
   subtotal: number | string;
@@ -34,6 +44,7 @@ type OrderRow = {
 function mapOrder(row: OrderRow): Order {
   return {
     id: row.id,
+    userId: row.user_id ?? undefined,
     customerName: row.customer_name,
     email: row.email,
     items: (row.order_items ?? []).map((it) => ({
@@ -62,19 +73,19 @@ const ORDER_SELECT =
 
 /** All orders visible to the caller (RLS: own orders, or every order for admins). */
 export async function fetchOrders(
-  supabase: SupabaseClient,
+  supabase: Db,
 ): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(ORDER_SELECT)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return (data as OrderRow[]).map(mapOrder);
+  return (data as unknown as OrderRow[]).map(mapOrder);
 }
 
 /** A single order by id (RLS still applies). */
 export async function fetchOrderById(
-  supabase: SupabaseClient,
+  supabase: Db,
   id: string,
 ): Promise<Order | null> {
   const { data, error } = await supabase
@@ -83,43 +94,61 @@ export async function fetchOrderById(
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
-  return data ? mapOrder(data as OrderRow) : null;
+  return data ? mapOrder(data as unknown as OrderRow) : null;
 }
 
+/** What the client is allowed to decide about an order. */
+export type NewOrderInput = {
+  customerName: string;
+  email: string;
+  items: OrderItem[];
+  qrChoice: Order["qrChoice"];
+  shippingAddress: Order["shippingAddress"];
+  paymentMethod: Order["paymentMethod"];
+  /** Language used for the server-generated QR token labels. */
+  locale: Locale;
+};
+
 /**
- * Place an order through the atomic `place_order` RPC. The server validates
- * every item price against the live catalog, recomputes subtotal/shipping/
- * total, forces status to 'pending' and inserts order + items in one
- * transaction. Requires a signed-in user (the RPC reads auth.uid()).
+ * Place an order through the atomic `place_order` RPC, returning the
+ * server-minted order id.
+ *
+ * The server owns everything security-relevant: it validates every item price
+ * against the live catalog, recomputes subtotal/shipping/total, forces status
+ * to 'pending', MINTS THE ORDER ID AND QR TOKENS, and inserts order + items in
+ * one transaction. Requires a signed-in user (the RPC reads auth.uid()).
+ *
+ * The id and tokens used to be generated in the browser and passed in (H10).
+ * The client now sends only the cart, the address and the QR choice.
  */
 export async function createOrder(
-  supabase: SupabaseClient,
-  order: Order,
-): Promise<void> {
-  const { error } = await supabase.rpc("place_order", {
-    p_id: order.id,
-    p_customer_name: order.customerName,
-    p_email: order.email,
-    p_items: order.items.map((it: OrderItem) => ({
+  supabase: Db,
+  input: NewOrderInput,
+): Promise<string> {
+  const { data, error } = await supabase.rpc("place_order", {
+    p_customer_name: input.customerName,
+    p_email: input.email,
+    p_items: input.items.map((it: OrderItem) => ({
       product_id: it.productId,
       name: it.name,
       qty: it.qty,
       price: it.price,
       variation_label: it.variationLabel ?? null,
     })),
-    p_qr_choice: order.qrChoice,
-    p_qr_tokens: order.qrTokens,
-    p_qr_token_labels: order.qrTokenLabels ?? [],
-    p_qr_token_product_ids: order.qrTokenProductIds ?? [],
-    p_shipping_address: order.shippingAddress,
-    p_payment_method: order.paymentMethod,
+    p_qr_choice: input.qrChoice,
+    p_shipping_address: input.shippingAddress,
+    p_payment_method: input.paymentMethod,
+    p_locale: input.locale,
   });
   if (error) throw error;
+  const id = typeof data === "string" ? data : String(data ?? "");
+  if (!id) throw new Error("place_order returned no id");
+  return id;
 }
 
 /** Admin: update an order's status. */
 export async function updateOrderStatus(
-  supabase: SupabaseClient,
+  supabase: Db,
   id: string,
   status: Order["status"],
 ): Promise<void> {

@@ -123,6 +123,13 @@ function StoreTab() {
           value={form.facebook}
           onChange={(v) => update("facebook", v)}
         />
+        {/* Shown in the footer and on the contact page. Blank hides those rows
+            rather than falling back to a hardcoded "Dubai, UAE". */}
+        <Input
+          label={t("admin_address")}
+          value={form.address}
+          onChange={(v) => update("address", v)}
+        />
       </div>
       <SaveButton onClick={save} label={t("admin_save_store")} />
     </SettingsCard>

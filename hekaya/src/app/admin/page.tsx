@@ -28,7 +28,7 @@ import { useOrders } from "@/lib/useOrders";
 import { createClient } from "@/lib/supabase/client";
 import { fetchAllMemories } from "@/lib/supabase/memories";
 import { formatPrice, formatDate, cn } from "@/lib/utils";
-import type { OrderStatus } from "@/types";
+import { ORDER_STATUSES, type OrderStatus } from "@/types";
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
   pending: "#d4a437",
@@ -61,7 +61,9 @@ export default function AdminDashboard() {
 
   const totalRevenue = allOrders.reduce((s, o) => s + o.total, 0);
   const totalOrders = allOrders.length;
-  const newCustomers = new Set(
+  // Distinct order emails across ALL time — i.e. total customers who have
+  // ordered, not new ones. The tile was labelled "New Customers" (M3).
+  const totalCustomers = new Set(
     allOrders.map((o) => (o.email || "").toLowerCase()).filter(Boolean),
   ).size;
 
@@ -119,37 +121,33 @@ export default function AdminDashboard() {
       Icon: QrCode,
     },
     {
-      label: t("admin_new_customers"),
-      value: newCustomers.toLocaleString(),
+      label: t("admin_total_customers"),
+      value: totalCustomers.toLocaleString(),
       delta: deltas.customers,
       Icon: Users,
     },
   ];
 
-  // Orders-by-status data (real counts)
+  // Orders-by-status data (real counts).
+  //
+  // Built by iterating ORDER_STATUSES so it cannot drift from the enum again.
+  // The previous version hardcoded four buckets and omitted `paid` and
+  // `cancelled` — and since every order starts `pending` and the admin marks it
+  // `paid` by hand, PAID ORDERS VANISHED from the chart entirely, making the
+  // totals silently fail to add up (M3).
   const statusData = useMemo(() => {
-    const counts: Record<string, number> = {
-      Pending: 0,
-      Processing: 0,
-      Shipped: 0,
-      Delivered: 0,
-    };
-    const labels: Record<string, OrderStatus> = {
-      Pending: "pending",
-      Processing: "processing",
-      Shipped: "shipped",
-      Delivered: "delivered",
-    };
+    const counts = new Map<OrderStatus, number>(
+      ORDER_STATUSES.map((s) => [s, 0]),
+    );
     for (const o of allOrders) {
-      const key = Object.keys(labels).find((k) => labels[k] === o.status);
-      if (key) counts[key] += 1;
+      counts.set(o.status, (counts.get(o.status) ?? 0) + 1);
     }
-    return Object.entries(counts).map(([name, value]) => ({
-      name,
-      value,
-      fill: STATUS_COLORS[labels[name]],
+    return ORDER_STATUSES.map((s) => ({
+      name: t(`status_${s}` as never),
+      value: counts.get(s) ?? 0,
+      fill: STATUS_COLORS[s],
     }));
-  }, [allOrders]);
+  }, [allOrders, t]);
 
   // Revenue trend: real revenue summed per month over the last 12 months
   const revenueData = useMemo(() => {

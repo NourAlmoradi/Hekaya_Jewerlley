@@ -88,10 +88,12 @@ export default async function ProductPage({
             "@type": "Offer",
             priceCurrency: "AED",
             price: product.price,
-            availability:
-              (product.stock ?? 1) > 0
-                ? "https://schema.org/InStock"
-                : "https://schema.org/OutOfStock",
+            // Every piece is made to order, so nothing is ever "out of stock".
+            // This used to read a `stock` column that no admin screen could set
+            // and no checkout path enforced, so it was always the `?? 1`
+            // fallback anyway. (schema.org/MadeToOrder is also valid and more
+            // precise, but InStock has the broadest rich-result support.)
+            availability: "https://schema.org/InStock",
             url: `${SITE_URL}/product/${product.slug}`,
           },
         },

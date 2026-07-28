@@ -15,6 +15,7 @@ import {
   PlaceholderJewel,
   kindFromCategory,
 } from "@/components/ui/PlaceholderJewel";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { formatPrice, cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { toast } from "sonner";
@@ -34,6 +35,9 @@ export default function AdminProducts() {
   // Images present when the modal opened — used to clean up only the images that
   // were uploaded *this* session if the admin removes them again.
   const [origImages, setOrigImages] = useState<string[]>([]);
+  // Product id the delete dialog is asking about (null = closed).
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const isNewProduct = (id: string) => !merged.some((p) => p.id === id);
 
@@ -171,15 +175,21 @@ export default function AdminProducts() {
     setEditing(null);
   };
 
-  const remove = async (id: string) => {
-    if (!confirm(locale === "ar" ? "هل أنت متأكد؟" : "Are you sure?")) return;
+  // Styled confirm rather than native confirm() — which some corporate browser
+  // policies suppress, in which case it returns false and the delete silently
+  // does nothing (M14).
+  const confirmRemove = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      await deleteCatalogProduct(id);
+      await deleteCatalogProduct(pendingDelete);
+      toast.success(locale === "ar" ? "تم الحذف" : "Deleted");
+      setPendingDelete(null);
     } catch {
       toast.error(locale === "ar" ? "تعذّر الحذف" : "Could not delete");
-      return;
+    } finally {
+      setDeleting(false);
     }
-    toast.success(locale === "ar" ? "تم الحذف" : "Deleted");
   };
 
   const toggleActive = async (id: string) => {
@@ -329,7 +339,7 @@ export default function AdminProducts() {
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => remove(p.id)}
+                        onClick={() => setPendingDelete(p.id)}
                         className="grid h-8 w-8 place-items-center rounded-md text-rose-400 transition hover:bg-rose-500/10"
                         aria-label={t("delete")}
                       >
@@ -424,7 +434,7 @@ export default function AdminProducts() {
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => remove(p.id)}
+                    onClick={() => setPendingDelete(p.id)}
                     className="grid h-9 w-9 place-items-center rounded-md text-rose-400 ring-1 ring-rose-400/20 transition hover:bg-rose-500/10"
                     aria-label={t("delete")}
                   >
@@ -500,6 +510,27 @@ export default function AdminProducts() {
                   value={String(editing.price)}
                   onChange={(v) => setEditing({ ...editing, price: Number(v) })}
                 />
+                {/* Sale "was" price. Without this field the strikethrough in
+                    ProductDetail could never render, so running a sale was
+                    impossible (H4). Blank clears it. */}
+                <FieldDark
+                  label={
+                    locale === "ar"
+                      ? "السعر قبل الخصم (AED) — اختياري"
+                      : "Compare-at price (AED) — optional"
+                  }
+                  type="number"
+                  forceLtr
+                  value={
+                    editing.compareAtPrice ? String(editing.compareAtPrice) : ""
+                  }
+                  onChange={(v) =>
+                    setEditing({
+                      ...editing,
+                      compareAtPrice: v.trim() ? Number(v) : undefined,
+                    })
+                  }
+                />
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">
                     {t("category")}
@@ -536,6 +567,54 @@ export default function AdminProducts() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Short description — the PDP subtitle AND the <meta
+                    description> / OG description for this product's page. With
+                    no field to set it, every product page fell back to the
+                    generic site description (H4). */}
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">
+                    {locale === "ar"
+                      ? "وصف مختصر (عربي) — يظهر في نتائج البحث"
+                      : "Short description (AR) — used as the search snippet"}
+                  </label>
+                  <input
+                    value={editing.shortDescription?.ar ?? ""}
+                    maxLength={160}
+                    onChange={(e) =>
+                      setEditing({
+                        ...editing,
+                        shortDescription: {
+                          ar: e.target.value,
+                          en: editing.shortDescription?.en ?? "",
+                        },
+                      })
+                    }
+                    className="w-full rounded-md border border-white/10 bg-[#0a0a0a] px-3 py-2.5 text-sm text-white focus:border-[#c9a96e]/40 focus:outline-none"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">
+                    {locale === "ar"
+                      ? "وصف مختصر (إنجليزي) — يظهر في نتائج البحث"
+                      : "Short description (EN) — used as the search snippet"}
+                  </label>
+                  <input
+                    dir="ltr"
+                    maxLength={160}
+                    value={editing.shortDescription?.en ?? ""}
+                    onChange={(e) =>
+                      setEditing({
+                        ...editing,
+                        shortDescription: {
+                          ar: editing.shortDescription?.ar ?? "",
+                          en: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full rounded-md border border-white/10 bg-[#0a0a0a] px-3 py-2.5 text-sm text-white focus:border-[#c9a96e]/40 focus:outline-none"
+                  />
                 </div>
 
                 {/* Description */}
@@ -640,31 +719,63 @@ export default function AdminProducts() {
 
                 {/* Includes Memory toggle */}
                 <div className="sm:col-span-2">
-                  <label className="flex cursor-pointer items-center justify-between rounded-md border border-white/10 bg-[#0a0a0a] px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {locale === "ar"
-                          ? "يتضمن ذاكرة QR"
-                          : "Includes QR Memory"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-white/50">
-                        {locale === "ar"
-                          ? "يسمح للعميل بربط رسالة وصور بالقطعة"
-                          : "Lets the customer attach a message & photos to this piece"}
-                      </p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={editing.isQrEligible}
-                      onChange={(e) =>
-                        setEditing({
-                          ...editing,
-                          isQrEligible: e.target.checked,
-                        })
-                      }
-                      className="h-4 w-4 accent-[#c9a96e]"
-                    />
-                  </label>
+                  <ToggleDark
+                    title={
+                      locale === "ar"
+                        ? "يتضمن ذاكرة QR"
+                        : "Includes QR Memory"
+                    }
+                    hint={
+                      locale === "ar"
+                        ? "يسمح للعميل بربط رسالة وصور بالقطعة"
+                        : "Lets the customer attach a message & photos to this piece"
+                    }
+                    checked={editing.isQrEligible}
+                    onChange={(v) =>
+                      setEditing({ ...editing, isQrEligible: v })
+                    }
+                  />
+                </div>
+
+                {/* Merchandising flags. All three were readable by the
+                    storefront but settable nowhere, so the "New" and "Best
+                    Seller" badges could never appear and the "Best Sellers"
+                    sort was a permanent no-op (H4). */}
+                <div className="grid gap-2 sm:col-span-2">
+                  <ToggleDark
+                    title={
+                      locale === "ar" ? "مميّز في الرئيسية" : "Featured on home"
+                    }
+                    hint={
+                      locale === "ar"
+                        ? "يظهر في قسم «قطع مختارة» بالصفحة الرئيسية"
+                        : "Shows in the Featured Pieces section on the homepage"
+                    }
+                    checked={editing.isFeatured ?? false}
+                    onChange={(v) => setEditing({ ...editing, isFeatured: v })}
+                  />
+                  <ToggleDark
+                    title={locale === "ar" ? "جديد" : "New"}
+                    hint={
+                      locale === "ar"
+                        ? "يعرض شارة «جديد» على صفحة المنتج"
+                        : "Shows the New badge on the product page"
+                    }
+                    checked={editing.isNew ?? false}
+                    onChange={(v) => setEditing({ ...editing, isNew: v })}
+                  />
+                  <ToggleDark
+                    title={locale === "ar" ? "الأكثر مبيعًا" : "Best seller"}
+                    hint={
+                      locale === "ar"
+                        ? "يعرض الشارة ويرفع ترتيبه في فرز «الأكثر مبيعًا»"
+                        : "Shows the badge and ranks it in the Best Sellers sort"
+                    }
+                    checked={editing.isBestseller ?? false}
+                    onChange={(v) =>
+                      setEditing({ ...editing, isBestseller: v })
+                    }
+                  />
                 </div>
 
                 {/* Image upload (1–4) */}
@@ -760,7 +871,48 @@ export default function AdminProducts() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        busy={deleting}
+        title={t("confirm_delete_title")}
+        message={
+          locale === "ar"
+            ? "سيتم حذف المنتج وصوره نهائيًا. لا يمكن التراجع."
+            : "This permanently deletes the product and its images. This cannot be undone."
+        }
+        onConfirm={confirmRemove}
+        onCancel={() => setPendingDelete(null)}
+      />
     </>
+  );
+}
+
+/** Labelled checkbox row matching the dark admin surface. */
+function ToggleDark({
+  title,
+  hint,
+  checked,
+  onChange,
+}: {
+  title: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-4 rounded-md border border-white/10 bg-[#0a0a0a] px-4 py-3">
+      <div>
+        <p className="text-sm font-semibold text-white">{title}</p>
+        {hint && <p className="mt-0.5 text-xs text-white/50">{hint}</p>}
+      </div>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 shrink-0 accent-[#c9a96e]"
+      />
+    </label>
   );
 }
 

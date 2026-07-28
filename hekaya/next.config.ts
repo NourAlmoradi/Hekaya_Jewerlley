@@ -27,11 +27,6 @@ const supabaseHost = (() => {
   }
 })();
 
-// Content-Security-Policy. Shipped as Report-Only first: it never blocks, but
-// violations surface in the browser console so we can tune it before switching
-// to the enforcing `Content-Security-Policy` header. The app's real sources are
-// few: our own origin, Google sign-in, and the Supabase project (API + realtime
-// websocket + public storage images).
 const supabaseOrigin = supabaseHost ? `https://${supabaseHost}` : "";
 const supabaseWs = supabaseHost ? `wss://${supabaseHost}` : "";
 const csp = [
@@ -48,6 +43,8 @@ const csp = [
   "frame-src https://accounts.google.com",
   "frame-ancestors 'none'",
   "form-action 'self'",
+  // No plugins, and no <base> hijacking of relative URLs.
+  "upgrade-insecure-requests",
 ].join("; ");
 
 const nextConfig: NextConfig = {
@@ -71,7 +68,7 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: [
           ...securityHeaders,
-          { key: "Content-Security-Policy-Report-Only", value: csp },
+          { key: "Content-Security-Policy", value: csp },
         ],
       },
     ];

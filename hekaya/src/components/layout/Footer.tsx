@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { useT } from "@/lib/useT";
@@ -46,6 +48,10 @@ export function Footer() {
   const whatsapp = useAdminSettings((s) => s.store.whatsapp);
   const instagram = useAdminSettings((s) => s.store.instagram);
   const facebook = useAdminSettings((s) => s.store.facebook);
+  const email = useAdminSettings((s) => s.store.email);
+  const phone = useAdminSettings((s) => s.store.phone);
+  const address = useAdminSettings((s) => s.store.address);
+  const waUrl = whatsappUrl(whatsapp);
   // Strip leading "@" or "/" so we can safely compose social URLs.
   const igHandle = instagram.replace(/^[@/]+/, "").trim();
   const fbHandle = facebook.replace(/^[@/]+/, "").trim();
@@ -71,12 +77,11 @@ export function Footer() {
             <SocialLink href={fbUrl} label="Facebook">
               <FacebookIcon className="h-4 w-4" />
             </SocialLink>
-            <SocialLink
-              href={whatsappUrl(whatsapp)}
-              label={t("footer_whatsapp_label")}
-            >
-              <WhatsAppIcon className="h-4 w-4" />
-            </SocialLink>
+            {waUrl && (
+              <SocialLink href={waUrl} label={t("footer_whatsapp_label")}>
+                <WhatsAppIcon className="h-4 w-4" />
+              </SocialLink>
+            )}
           </div>
         </div>
 
@@ -103,38 +108,39 @@ export function Footer() {
             {t("footer_newsletter")}
           </h4>
           <p className="text-sm text-white/60">{t("footer_newsletter_d")}</p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-            }}
-            className="flex w-full overflow-hidden rounded-full border border-white/15 bg-white/5"
-          >
-            <input
-              type="email"
-              required
-              placeholder={t("email")}
-              className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-white placeholder-white/40 outline-none"
-            />
-            <button
-              type="submit"
-              className="shrink-0 whitespace-nowrap bg-[var(--color-primary)] px-5 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-[var(--color-primary-dark)] sm:px-6"
-            >
-              {t("subscribe")}
-            </button>
-          </form>
+          <NewsletterForm />
+          {/* Contact details come from Admin → Settings. Each row is omitted
+              when unset rather than falling back to a placeholder. */}
           <ul className="space-y-2 pt-2 text-sm text-white/60">
-            <li className="flex items-center gap-2">
-              <Mail className="h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
-              hello@mashaerjewellery.com
-            </li>
-            <li className="flex items-center gap-2">
-              <Phone className="h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
-              +971 50 000 0000
-            </li>
-            <li className="flex items-center gap-2">
-              <MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
-              Dubai, UAE
-            </li>
+            {email && (
+              <li className="flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
+                <a
+                  href={`mailto:${email}`}
+                  className="transition hover:text-[var(--color-primary)]"
+                >
+                  {email}
+                </a>
+              </li>
+            )}
+            {phone && (
+              <li className="flex items-center gap-2">
+                <Phone className="h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
+                <a
+                  href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+                  dir="ltr"
+                  className="transition hover:text-[var(--color-primary)]"
+                >
+                  {phone}
+                </a>
+              </li>
+            )}
+            {address && (
+              <li className="flex items-center gap-2">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
+                {address}
+              </li>
+            )}
           </ul>
         </div>
       </div>
@@ -153,6 +159,68 @@ export function Footer() {
         </div>
       </div>
     </footer>
+  );
+}
+
+/**
+ * Newsletter signup. Previously this form called preventDefault() and discarded
+ * the address with no feedback whatsoever (finding C2).
+ */
+function NewsletterForm() {
+  const { t, locale } = useT();
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (sending || !email.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/newsletter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), locale }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        already?: boolean;
+      };
+      if (!res.ok || !data.ok) {
+        toast.error(t("newsletter_failed"));
+        return;
+      }
+      toast.success(
+        data.already ? t("newsletter_already") : t("newsletter_subscribed"),
+      );
+      setEmail("");
+    } catch {
+      toast.error(t("newsletter_failed"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex w-full overflow-hidden rounded-full border border-white/15 bg-white/5"
+    >
+      <input
+        type="email"
+        required
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder={t("email")}
+        className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-white placeholder-white/40 outline-none"
+      />
+      <button
+        type="submit"
+        disabled={sending}
+        className="shrink-0 whitespace-nowrap bg-[var(--color-primary)] px-5 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-[var(--color-primary-dark)] disabled:opacity-60 sm:px-6"
+      >
+        {sending ? t("loading") : t("subscribe")}
+      </button>
+    </form>
   );
 }
 

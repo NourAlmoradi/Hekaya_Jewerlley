@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ShieldCheck, QrCode, Sparkles } from "lucide-react";
 import { useT } from "@/lib/useT";
@@ -35,7 +35,7 @@ const HERO_SLIDES: HeroSlideExtra[] = [
     titleAKey: "hero_slide1_title_a",
     titleBKey: "hero_slide1_title_b",
     subKey: "hero_slide1_sub",
-    image: "/logo.jpg",
+    image: "/logo.jpeg",
     alt: "Mashaer Jewellery — premium children's gold jewellery in the UAE | مجوهرات مشاعر للأطفال",
     primaryCta: {
       href: "/products",
@@ -479,7 +479,18 @@ export function CollectionShowcase() {
 export function FeaturedProducts() {
   const { t } = useT();
   const all = useProducts();
-  const featured = all.filter((p) => p.isActive).slice(0, 8);
+  // Honour the isFeatured flag so the owner can actually curate the homepage.
+  // This used to be `all.filter(p => p.isActive)` — i.e. "the 8 most recently
+  // created active products" — which left the single most valuable piece of
+  // merchandising space on the site uncurated (H4).
+  //
+  // Fall back to newest-first while nothing is flagged yet, so the section
+  // never silently empties after this change ships.
+  const featured = useMemo(() => {
+    const active = all.filter((p) => p.isActive);
+    const flagged = active.filter((p) => p.isFeatured);
+    return (flagged.length > 0 ? flagged : active).slice(0, 8);
+  }, [all]);
   if (featured.length === 0) return null;
   return (
     <section className="bg-cream-diagonal section-fluid relative overflow-hidden">

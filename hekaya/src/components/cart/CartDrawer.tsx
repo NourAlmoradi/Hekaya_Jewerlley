@@ -6,7 +6,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X, Plus, Minus, Trash2, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { useT } from "@/lib/useT";
-import { useCartStore, useCartSubtotal } from "@/stores/cart.store";
+import {
+  useCartStore,
+  useCartSubtotal,
+  useCartCount,
+} from "@/stores/cart.store";
 import { useAuth } from "@/lib/supabase/useAuth";
 import { formatPrice } from "@/lib/utils";
 import {
@@ -25,6 +29,7 @@ export function CartDrawer() {
   const setOpen = useCartStore((s) => s.setOpen);
   const removeItem = useCartStore((s) => s.removeItem);
   const updateQty = useCartStore((s) => s.updateQty);
+  const count = useCartCount();
   const subtotal = useCartSubtotal();
   const fromSide = dir === "rtl" ? "-100%" : "100%";
 
@@ -71,8 +76,11 @@ export function CartDrawer() {
             <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-5">
               <h3 className="font-display text-2xl font-semibold">
                 {t("cart_title")}
+                {/* Sum of quantities, matching the header badge. This rendered
+                    items.length, so three of one bracelet showed "3" in the
+                    header and "(1)" here (M17). */}
                 <span className="ms-2 text-base text-[var(--color-ink-faint)]">
-                  ({items.length})
+                  ({count})
                 </span>
               </h3>
               <button
@@ -158,7 +166,11 @@ export function CartDrawer() {
                           )}
                           <div className="mt-auto flex items-end justify-between pt-2">
                             <div className="inline-flex items-center rounded border border-[var(--color-border)]">
+                              {/* Disabled at 1: updateQty clamps with
+                                  Math.max(1, qty), so this used to look
+                                  active while doing nothing (M17). */}
                               <button
+                                disabled={item.qty <= 1}
                                 onClick={() =>
                                   updateQty(
                                     item.productId,
@@ -166,8 +178,8 @@ export function CartDrawer() {
                                     item.variationId,
                                   )
                                 }
-                                className="grid h-8 w-8 place-items-center transition hover:bg-[var(--color-bg-secondary)]"
-                                aria-label="Decrease"
+                                className="grid h-8 w-8 place-items-center transition hover:bg-[var(--color-bg-secondary)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                aria-label={t("decrease_qty")}
                               >
                                 <Minus className="h-3 w-3" />
                               </button>
@@ -183,7 +195,7 @@ export function CartDrawer() {
                                   )
                                 }
                                 className="grid h-8 w-8 place-items-center transition hover:bg-[var(--color-bg-secondary)]"
-                                aria-label="Increase"
+                                aria-label={t("increase_qty")}
                               >
                                 <Plus className="h-3 w-3" />
                               </button>

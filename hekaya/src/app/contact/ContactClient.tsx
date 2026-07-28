@@ -21,6 +21,10 @@ const MAX_MESSAGE = 500;
 export default function ContactPage() {
   const { t, locale } = useT();
   const whatsapp = useAdminSettings((s) => s.store.whatsapp);
+  const storeEmail = useAdminSettings((s) => s.store.email);
+  const storePhone = useAdminSettings((s) => s.store.phone);
+  const storeAddress = useAdminSettings((s) => s.store.address);
+  const waUrl = whatsappUrl(whatsapp);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -64,15 +68,36 @@ export default function ContactPage() {
         <motion.form
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            if (overLimit) return;
+            if (overLimit || sending) return;
             setSending(true);
-            setTimeout(() => {
+            try {
+              const res = await fetch("/api/contact", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ...form, locale }),
+              });
+              if (!res.ok) {
+                // Only ever claim success on a 2xx. The previous version
+                // reported "message sent" unconditionally after a setTimeout.
+                const { error } = await res
+                  .json()
+                  .catch(() => ({ error: "" }));
+                toast.error(
+                  error === "rate_limited"
+                    ? t("contact_rate_limited")
+                    : t("contact_send_failed"),
+                );
+                return;
+              }
               toast.success(t("message_sent"));
               setForm({ name: "", email: "", topic: "general", message: "" });
+            } catch {
+              toast.error(t("contact_send_failed"));
+            } finally {
               setSending(false);
-            }, 700);
+            }
           }}
           className="rounded-xl bg-white p-7 shadow-sm ring-1 ring-[var(--color-border)]"
         >
@@ -143,9 +168,10 @@ export default function ContactPage() {
         </motion.form>
 
         <aside className="space-y-5">
-          {/* WhatsApp banner */}
+          {/* WhatsApp banner — only when a real number is configured */}
+          {waUrl && (
           <a
-            href={whatsappUrl(whatsapp)}
+            href={waUrl}
             target="_blank"
             rel="noreferrer"
             className="block rounded-xl bg-gradient-to-br from-[#25d366]/15 to-[#128c7e]/10 p-5 ring-1 ring-[#25d366]/30 transition hover:from-[#25d366]/25"
@@ -167,6 +193,7 @@ export default function ContactPage() {
               </div>
             </div>
           </a>
+          )}
 
           {/* Showroom card */}
           <div className="rounded-xl bg-white p-5 ring-1 ring-[var(--color-border)]">
@@ -179,20 +206,28 @@ export default function ContactPage() {
               {t("contact_showroom_title")}
             </p>
             <p className="mt-1 text-sm font-medium">
-              {t("contact_showroom_addr")}
+              {storeAddress || t("contact_showroom_addr")}
             </p>
           </div>
 
-          <ContactCard
-            Icon={Mail}
-            title={locale === "ar" ? "البريد" : "Email"}
-            value="hello@mashaerjewellery.com"
-          />
-          <ContactCard
-            Icon={Phone}
-            title={locale === "ar" ? "الهاتف" : "Phone"}
-            value="+971 50 000 0000"
-          />
+          {/* Email and phone come from Admin → Settings; each card is omitted
+              when unset rather than showing a placeholder. */}
+          {storeEmail && (
+            <ContactCard
+              Icon={Mail}
+              title={locale === "ar" ? "البريد" : "Email"}
+              value={storeEmail}
+              href={`mailto:${storeEmail}`}
+            />
+          )}
+          {storePhone && (
+            <ContactCard
+              Icon={Phone}
+              title={locale === "ar" ? "الهاتف" : "Phone"}
+              value={storePhone}
+              href={`tel:${storePhone.replace(/[^\d+]/g, "")}`}
+            />
+          )}
           <ContactCard
             Icon={Clock}
             title={locale === "ar" ? "ساعات العمل" : "Hours"}
@@ -238,10 +273,13 @@ function ContactCard({
   Icon,
   title,
   value,
+  href,
 }: {
   Icon: React.ComponentType<{ className?: string }>;
   title: string;
   value: string;
+  /** When set, the value becomes a mailto:/tel: link. */
+  href?: string;
 }) {
   return (
     <div className="flex items-start gap-3 rounded-lg bg-white p-5 ring-1 ring-[var(--color-border)]">
@@ -252,7 +290,17 @@ function ContactCard({
         <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-ink-muted)]">
           {title}
         </p>
-        <p className="mt-0.5 text-sm font-medium">{value}</p>
+        {href ? (
+          <a
+            href={href}
+            dir="ltr"
+            className="mt-0.5 block text-sm font-medium transition hover:text-[var(--color-primary-dark)] rtl:text-end"
+          >
+            {value}
+          </a>
+        ) : (
+          <p className="mt-0.5 text-sm font-medium">{value}</p>
+        )}
       </div>
     </div>
   );
