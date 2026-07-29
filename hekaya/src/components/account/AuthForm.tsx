@@ -17,8 +17,13 @@ import { toast } from "sonner";
 /**
  * Real email/password auth form (sign in + sign up) backed by Supabase.
  * Replaces the old one-click mock-login button.
+ *
+ * `onAuthenticated` fires the moment a session exists, before the redirect is
+ * issued. Host pages render this form behind a `!user` check, so without that
+ * signal they'd swap in their signed-in view the instant Supabase publishes the
+ * session — flashing the account dashboard for a frame on the way to `dest`.
  */
-export function AuthForm() {
+export function AuthForm({ onAuthenticated }: { onAuthenticated?: () => void }) {
   const { t, locale } = useT();
   const { signIn, signUp } = useAuth();
   const router = useRouter();
@@ -38,6 +43,10 @@ export function AuthForm() {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
+    // Set once a redirect is under way, so the `finally` below leaves the
+    // submit button disabled instead of briefly re-enabling it while
+    // router.replace is still fetching `dest`.
+    let leaving = false;
     try {
       if (mode === "signin") {
         const err = await signIn(email, password);
@@ -45,6 +54,8 @@ export function AuthForm() {
           toast.error(err);
         } else {
           toast.success(ar ? "تم تسجيل الدخول" : "Signed in");
+          leaving = true;
+          onAuthenticated?.();
           router.replace(dest);
         }
       } else if (mode === "forgot") {
@@ -71,11 +82,13 @@ export function AuthForm() {
           // Email confirmation is disabled, so signup signs the user in
           // immediately — send them on to their original destination.
           toast.success(ar ? "تم إنشاء حسابك بنجاح" : "Account created");
+          leaving = true;
+          onAuthenticated?.();
           router.replace(dest);
         }
       }
     } finally {
-      setBusy(false);
+      if (!leaving) setBusy(false);
     }
   };
 
@@ -198,7 +211,7 @@ export function AuthForm() {
               <span className="h-px flex-1 bg-[var(--color-border)]" />
             </div>
 
-            <GoogleSignInButton ar={ar} />
+            <GoogleSignInButton ar={ar} onAuthenticated={onAuthenticated} />
           </>
         )}
 

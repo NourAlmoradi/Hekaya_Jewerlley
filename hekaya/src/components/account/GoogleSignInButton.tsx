@@ -72,13 +72,24 @@ function loadGsiScript(): Promise<void> {
  * value is handed to Supabase, which re-hashes and compares — binding the
  * returned ID token to this exact request.
  */
-export function GoogleSignInButton({ ar }: { ar: boolean }) {
+export function GoogleSignInButton({
+  ar,
+  onAuthenticated,
+}: {
+  ar: boolean;
+  onAuthenticated?: () => void;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Mirror AuthForm: honor ?redirect=/checkout, internal paths only.
   const dest = safeRedirectPath(searchParams.get("redirect"));
   const containerRef = useRef<HTMLDivElement>(null);
   const rawNonceRef = useRef("");
+  // Held in a ref so an inline callback from the parent doesn't change
+  // `onCredential`'s identity — the GSI init effect depends on it, and would
+  // otherwise tear down and re-render Google's button on every parent render.
+  const onAuthenticatedRef = useRef(onAuthenticated);
+  onAuthenticatedRef.current = onAuthenticated;
 
   const onCredential = useCallback(
     async ({ credential }: CredentialResponse) => {
@@ -93,6 +104,10 @@ export function GoogleSignInButton({ ar }: { ar: boolean }) {
         return;
       }
       toast.success(ar ? "تم تسجيل الدخول" : "Signed in");
+      // Announce BEFORE navigating: the host page must know a redirect is in
+      // flight before `user` flips truthy, or it paints its signed-in view for
+      // a frame while router.replace is still fetching `dest`.
+      onAuthenticatedRef.current?.();
       router.replace(dest);
     },
     [ar, router, dest],

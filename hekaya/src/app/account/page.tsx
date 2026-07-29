@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -69,6 +69,14 @@ function AccountPageInner() {
   const orders = useOrdersStore((s) => s.orders);
   const ordersLoaded = useOrdersStore((s) => s.loaded);
   const loadOrders = useOrdersStore((s) => s.load);
+  // The orders store is shared with the admin screens, and RLS returns EVERY
+  // order to an admin — so an admin viewing their own account saw the whole
+  // shop's orders listed as theirs. This page is the personal view; scope it to
+  // the signed-in user. The shop-wide view is /admin/orders.
+  const myOrders = useMemo(
+    () => orders.filter((o) => o.userId === user?.id),
+    [orders, user?.id],
+  );
   const [memoryEntries, setMemoryEntries] = useState<PublicMemory[]>([]);
   const wishlistIds = useWishlistStore((s) => s.ids);
   const wishlistToggle = useWishlistStore((s) => s.toggle);
@@ -78,6 +86,11 @@ function AccountPageInner() {
   const openCart = useCartStore((s) => s.setOpen);
   const products = useProducts();
   const [tab, setTab] = useState<Tab>("overview");
+  // True from the moment sign-in succeeds until the post-login navigation
+  // lands. Supabase publishes the session before router.replace finishes
+  // fetching the destination, so without this the dashboard below would paint
+  // for a frame on the way to `/` — a visible account-page flash after login.
+  const [redirecting, setRedirecting] = useState(false);
 
   // Addresses (Supabase-backed)
   const addresses = useAddressesStore((s) => s.addresses);
@@ -204,7 +217,7 @@ function AccountPageInner() {
     void removeAddress(id);
   };
 
-  if (loading) {
+  if (loading || redirecting) {
     return (
       <div className="container-h flex min-h-[60vh] items-center justify-center py-20">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--color-primary-dark)] border-t-transparent" />
@@ -213,10 +226,10 @@ function AccountPageInner() {
   }
 
   if (!user) {
-    return <AuthForm />;
+    return <AuthForm onAuthenticated={() => setRedirecting(true)} />;
   }
 
-  const itemsPurchased = orders.reduce(
+  const itemsPurchased = myOrders.reduce(
     (sum, o) => sum + o.items.reduce((s, it) => s + it.qty, 0),
     0,
   );
@@ -290,7 +303,7 @@ function AccountPageInner() {
               <StatTile
                 Icon={Package}
                 label={t("account_stat_orders")}
-                value={orders.length}
+                value={myOrders.length}
               />
               <StatTile
                 Icon={ShoppingBag}
@@ -314,7 +327,7 @@ function AccountPageInner() {
               <h2 className="mb-3 font-display text-xl font-semibold">
                 {t("account_recent_orders")}
               </h2>
-              {orders.length === 0 ? (
+              {myOrders.length === 0 ? (
                 <Empty
                   label={
                     locale === "ar" ? "لا توجد طلبات بعد" : "No orders yet"
@@ -322,7 +335,7 @@ function AccountPageInner() {
                 />
               ) : (
                 <div className="space-y-3">
-                  {orders.slice(0, 3).map((o) => (
+                  {myOrders.slice(0, 3).map((o) => (
                     <div
                       key={o.id}
                       className="rounded-lg bg-white p-5 ring-1 ring-[var(--color-border)] sm:flex sm:items-center sm:justify-between"
@@ -377,12 +390,12 @@ function AccountPageInner() {
 
         {tab === "orders" && (
           <div className="space-y-3">
-            {orders.length === 0 && (
+            {myOrders.length === 0 && (
               <Empty
                 label={locale === "ar" ? "لا توجد طلبات بعد" : "No orders yet"}
               />
             )}
-            {orders.map((o) => (
+            {myOrders.map((o) => (
               <div
                 key={o.id}
                 className="rounded-lg bg-white p-5 ring-1 ring-[var(--color-border)] sm:flex sm:items-center sm:justify-between"

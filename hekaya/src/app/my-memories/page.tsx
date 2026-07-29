@@ -25,6 +25,10 @@ export default function MyMemoriesPage() {
   const qrColor = QR_COLOR;
   const [memories, setMemories] = useState<PublicMemory[]>([]);
   const [loading, setLoading] = useState(true);
+  // See account/page.tsx — holds the spinner from the moment a session exists
+  // until the post-login navigation lands, so this page doesn't flash behind
+  // the redirect.
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     // Signed out, RLS returns [] — don't bother asking, and don't let the
@@ -60,7 +64,7 @@ export default function MyMemoriesPage() {
     [memories],
   );
 
-  if (authLoading) {
+  if (authLoading || redirecting) {
     return (
       <div className="container-h flex min-h-[60vh] items-center justify-center py-20">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--color-primary-dark)] border-t-transparent" />
@@ -73,7 +77,7 @@ export default function MyMemoriesPage() {
   // saw "You haven't created any memories yet", indistinguishable from having
   // none, and could reasonably conclude their keepsakes had been deleted (M18).
   if (!user) {
-    return <AuthForm />;
+    return <AuthForm onAuthenticated={() => setRedirecting(true)} />;
   }
 
   return (

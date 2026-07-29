@@ -406,6 +406,10 @@ function StatusPill({
       const btn = btnRef.current;
       if (!btn) return;
       const r = btn.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) {
+        setCoords(null);
+        return;
+      }
       const rtl = document.documentElement.dir === "rtl";
       let left = rtl ? r.right - MENU_W : r.left;
       left = Math.max(8, Math.min(left, window.innerWidth - MENU_W - 8));
