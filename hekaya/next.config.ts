@@ -29,15 +29,24 @@ const supabaseHost = (() => {
 
 const supabaseOrigin = supabaseHost ? `https://${supabaseHost}` : "";
 const supabaseWs = supabaseHost ? `wss://${supabaseHost}` : "";
+
+// `next dev` compiles with the `eval-source-map` devtool, so every application
+// module is wrapped in an eval() call. Without 'unsafe-eval' the browser
+// refuses all of them: the SSR HTML still paints, but nothing hydrates — which
+// left /account frozen on its initial `loading` spinner forever. The production
+// bundle contains no eval, so the directive stays strict there.
+const isDev = process.env.NODE_ENV !== "production";
+
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline' https://accounts.google.com",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://accounts.google.com`,
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob:${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "font-src 'self' data:",
-  `connect-src 'self' https://accounts.google.com${
+  // The dev-only localhost entries are the HMR websocket.
+  `connect-src 'self'${isDev ? " ws://localhost:* http://localhost:*" : ""} https://accounts.google.com${
     supabaseOrigin ? ` ${supabaseOrigin} ${supabaseWs}` : ""
   }`,
   "frame-src https://accounts.google.com",
